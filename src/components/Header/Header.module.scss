@@ -1,0 +1,134 @@
+.root {
+  background-color: #fff;
+  padding: 10px 0;
+  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 30px;
+}
+
+.inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  color: black;
+  font-weight: 700;
+  line-height: 35px;
+  letter-spacing: 0.15px;
+  font-size: 26px;
+  margin-right: 20px;
+  border-radius: 5px;
+  font-family: "Montserrat", sans-serif;
+  text-decoration: none;
+  overflow: hidden;
+  position: relative;
+  display: inline-block;
+}
+.buttons{
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+.usersLink{
+  width: 50px;
+  height: 50px;
+  background: #fff;
+  display: flex;
+  margin-left: 10px;
+  padding: 5px;
+  border-radius: 20px;
+  align-items: center;
+  justify-content: center;
+
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1), 0px 2px 4px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.3s ease;
+}
+.usersLink:hover {
+  box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.1), 0px 4px 8px rgba(0, 0, 0, 0.06);
+}
+.logo::before,
+.logo::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  left: 0;
+}
+.logo::before {
+  background-color: #00684a;
+  height: 2px;
+  bottom: 0;
+  transform-origin: 100% 50%;
+  transform: scaleX(0);
+  transition: transform .3s cubic-bezier(0.76, 0, 0.24, 1);
+}
+.logo::after {
+  content: attr(data-replace);
+  height: 100%;
+  top: 0;
+  transform-origin: 100% 50%;
+  transform: translate3d(200%, 0, 0);
+  transition: transform .3s cubic-bezier(0.76, 0, 0.24, 1);
+  color: #00684a;
+}
+
+.logo:hover::before {
+  transform-origin: 0% 50%;
+  transform: scaleX(1);
+}
+.logo:hover::after {
+  transform: translate3d(0, 0, 0);
+}
+
+.logo span {
+  display: inline-block;
+  transition: transform .3s cubic-bezier(0.76, 0, 0.24, 1);
+}
+
+.logo:hover span {
+  transform: translate3d(-200%, 0, 0);
+}
+
+.avatarImg {
+  width: 40px;
+  height:  40px;
+  border-radius: 30px;
+}
+.avatar{
+  display: flex;
+  padding: 5px;
+  border-radius: 20px;
+  flex-direction: row;
+
+  align-items: center;
+  text-decoration: none;
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1), 0px 2px 4px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.3s ease;
+}
+
+.avatar:hover {
+  box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.1), 0px 4px 8px rgba(0, 0, 0, 0.06);
+}
+.avatarName{
+  font-weight: 700;
+  margin-left: 10px;
+  line-height: 35px;
+  letter-spacing: 0.15px;
+  font-size: 15px;
+  color: #1c1c1c;
+}
+.buttons {
+  button {
+    margin-left: 10px;
+  }
+
+  a {
+    text-decoration: none;
+  }
+}
+.writePost{
+  background: black;
+}
+.out{
+  color:#ffffff !important;
+}

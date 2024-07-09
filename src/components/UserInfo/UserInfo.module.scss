@@ -1,0 +1,30 @@
+.root {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+}
+.linkToUser{
+  text-decoration: none;
+  color:black;
+}
+.avatar {
+  width: 23px;
+  height: 23px;
+  border-radius: 30px;
+  margin-right: 10px;
+}
+
+.userName {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.userDetails {
+  display: flex;
+  flex-direction: column;
+}
+
+.additional {
+  font-size: 12px;
+  opacity: 0.6;
+}

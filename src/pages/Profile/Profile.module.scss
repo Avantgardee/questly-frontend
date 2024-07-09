@@ -1,0 +1,28 @@
+.stat{
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+.textBlock{
+  word-wrap: break-word;
+}
+.name{
+  font-weight: bold;
+}
+.info{
+  margin:0;
+}
+.birth{
+  font-weight: bold;
+}
+.infoBlock{
+  margin-top: 15px;
+}
+.mail{
+  font-weight: bold;
+}
+.infoCard{
+  text-decoration: none;
+  color: black;
+}
