@@ -111,7 +111,7 @@ const EditProfileDialog = ({ open, onClose, userData }) => {
                             <Avatar src={URL.createObjectURL(avatarFile)} sx={{ width: 100, height: 100 }} />
                         ) : (
                             <Avatar
-                                src={isAvatarRemoved || !userData.avatarUrl ? '/noavatar.png' : `http://localhost:4444${userData.avatarUrl}`}
+                                src={isAvatarRemoved || !userData.avatarUrl ? '/noavatar.png' : `${process.env.REACT_APP_API_URL}${userData.avatarUrl}`}
                                 sx={{ width: 100, height: 100 }}
                             />
                         )}

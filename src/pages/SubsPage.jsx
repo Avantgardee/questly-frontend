@@ -64,7 +64,7 @@ const SubscriptionsOrSubscribersPage = () => {
                                 <Card>
                                     <Link to={`/profile/${user._id}`} className={styles.linkToUser}>
                                         <CardContent sx={{ display: 'flex', alignItems: 'center', flexDirection: 'column' }}>
-                                            <Avatar alt={user.fullName} src={user.avatarUrl ? `http://localhost:4444${user.avatarUrl}` : '/noavatar.png'} sx={{ width: 60, height: 60, mb: 2 }} />
+                                            <Avatar alt={user.fullName} src={user.avatarUrl ? `${process.env.REACT_APP_API_URL}${user.avatarUrl}` : '/noavatar.png'} sx={{ width: 60, height: 60, mb: 2 }} />
                                             <Typography variant="h6" align="center">
                                                 {user.fullName
                                                 }

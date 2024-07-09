@@ -29,7 +29,7 @@ export const CommentsBlock = ({ items, isLoading }) => {
                                     {isLoading ? (
                                         <Skeleton variant="circular" width={40} height={40} />
                                     ) : (
-                                        <Avatar alt={obj.user.fullName} src={obj.user.avatarUrl ? `http://localhost:4444${obj.user.avatarUrl}` : '/noavatar.png'} />
+                                        <Avatar alt={obj.user.fullName} src={obj.user.avatarUrl ? `${process.env.REACT_APP_API_URL}${obj.user.avatarUrl}` : '/noavatar.png'} />
                                     )}
                                 </ListItemAvatar>
                             </Link>

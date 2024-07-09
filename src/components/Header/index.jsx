@@ -45,7 +45,7 @@ export const Header = () => {
                       <Avatar
                           className={styles.avatarImg}
                           alt={userData.fullName}
-                          src={userData.avatarUrl ? `http://localhost:4444${userData.avatarUrl}` : '/noavatar.png'}
+                          src={userData.avatarUrl ? `${process.env.REACT_APP_API_URL}${userData.avatarUrl}` : '/noavatar.png'}
                       />
                       <div className={styles.avatarName}>{userData.fullName}</div>
                     </Link>
