@@ -26,7 +26,7 @@
 **Редактор поста**:
 ![image](https://github.com/Avantgardee/questly-frontend/assets/111182261/645e7d54-a08c-4d46-a6e1-6f2e61986eb4)
 
-Работа с проектом (для корректной работы нужна клиентская (данный репозиторий) часть и серверная (ссылка на репозиторий: https://github.com/Avantgardee/questly-backend)
+Работа с проектом (для корректной работы нужна клиентская (данный репозиторий) часть и серверная (ссылка на репозиторий: [Клиент](https://github.com/Avantgardee/questly-backend))
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
