@@ -1,32 +1,50 @@
-import React, { useState } from 'react';
+import React, {useEffect, useState} from 'react';
 import Button from '@mui/material/Button';
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import styles from './Header.module.scss';
 import Container from '@mui/material/Container';
 import { useDispatch, useSelector } from "react-redux";
-import { logout, selectIsAuth } from "../../redux/slices/auth";
+import {fetchAuthMe, logout, selectIsAuth} from "../../redux/slices/auth";
 import { Avatar } from "@mui/material";
 import PeopleIcon from '@mui/icons-material/People';
 import CreateIcon from '@mui/icons-material/Create';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ConfirmDialog from "../confirmDialog";
+import NotificationPopper from "../Notification/NotificationPopper";
+import {fetchPosts, fetchTags} from "../../redux/slices/posts";
+import {fetchNotifications} from "../../redux/slices/notification";  // Импортируем новый компонент
 
 export const Header = () => {
   const isAuth = useSelector(selectIsAuth);
   const dispatch = useDispatch();
   const userData = useSelector((state) => state.auth.data);
-  const [open, setOpen] = useState(false);
+  const [openDialog, setOpenDialog] = useState(false);
+  const notificationsData = useSelector((state) => state.notification);
+  const notifications = notificationsData.status ? notificationsData.items : [];
+  const isNotificationsLoading = notificationsData.status === 'loading';
 
-  const handleClickOpen = () => {
-    setOpen(true);
+  useEffect(() => {
+    // Выполняем сначала запросы для получения данных пользователя, постов и тегов
+    dispatch(fetchAuthMe());
+  }, [dispatch]);
+
+// Отдельный useEffect для получения уведомлений после того, как пользователь будет загружен
+  useEffect(() => {
+    if (userData && userData._id) {
+      dispatch(fetchNotifications(userData._id));
+    }
+  }, [dispatch, userData]);
+
+  const handleClickOpenDialog = () => {
+    setOpenDialog(true);
   };
 
-  const handleClose = () => {
-    setOpen(false);
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
   };
 
   const handleConfirm = () => {
-    setOpen(false);
+    setOpenDialog(false);
     dispatch(logout());
     window.localStorage.removeItem('token');
   };
@@ -45,7 +63,7 @@ export const Header = () => {
                       <Avatar
                           className={styles.avatarImg}
                           alt={userData.fullName}
-                          src={userData.avatarUrl ? `${process.env.REACT_APP_API_URL}${userData.avatarUrl}` : '/noavatar.png'}
+                          src={userData.avatarUrl ? `http://localhost:4444${userData.avatarUrl}` : '/noavatar.png'}
                       />
                       <div className={styles.avatarName}>{userData.fullName}</div>
                     </Link>
@@ -61,14 +79,16 @@ export const Header = () => {
                     <Link to="/add-post">
                       <Button variant="contained" startIcon={<CreateIcon />}>Написать статью</Button>
                     </Link>
-                    <Button onClick={handleClickOpen} variant="contained" className={styles.out} color="out" startIcon={<LogoutIcon />}>
+                    <Button onClick={handleClickOpenDialog} variant="contained" className={styles.out} color="out" startIcon={<LogoutIcon />}>
                       Выйти
                     </Button>
                     <ConfirmDialog
-                        open={open}
-                        onClose={handleClose}
+                        open={openDialog}
+                        onClose={handleCloseDialog}
                         onConfirm={handleConfirm}
                     />
+                    {/* Используем компонент NotificationPopper и передаем уведомления */}
+                    {isNotificationsLoading ? <> </> : <NotificationPopper notifications={[...notifications.slice()].reverse()} />}
                   </>
               ) : (
                   <>

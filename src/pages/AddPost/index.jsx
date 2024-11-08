@@ -22,23 +22,17 @@ export const AddPost = () => {
     const [imageUrl, setImageUrl] = useState('');
     const inputFileRef = React.useRef(null);
     const [showNotFoundDialog, setShowNotFoundDialog] = useState(false);
-
+    const [imageFile, setImageFile] = useState(null);
     const isEditing = Boolean(id);
 
-    const handleChangeFile = async (event) => {
-        try {
-            const formData = new FormData();
-            formData.append('image', event.target.files[0]);
-            const { data } = await axios.post('/upload', formData);
-            setImageUrl(data.url);
-        } catch (err) {
-            console.warn(err);
-            setShowNotFoundDialog(true);
-        }
+    const handleChangeFile = (event) => {
+        setImageFile(event.target.files[0]);
+        setImageUrl('');
     };
 
-    const onClickRemoveImage = async () => {
+    const onClickRemoveImage = () => {
         setImageUrl('');
+        setImageFile(null);
     };
 
     const onChange = (value) => {
@@ -49,22 +43,47 @@ export const AddPost = () => {
         try {
             setIsLoading(true);
 
+            // Отправляем текстовые данные
             const fields = {
                 title,
-                imageUrl,
                 tags: tags.split(','),
                 text,
             };
 
-            const { data } = isEditing
-                ? await axios.patch(`/posts/${id}`, fields)
-                : await axios.post('/posts', fields);
+            // Сохраняем пост
+            const { data: postResponse } = isEditing
+                ? await axios.patch(`/posts/data/${id}`, fields)
+                : await axios.post('/posts/data', fields);
 
-            const _id = isEditing ? id : data._id;
-            navigate(`/posts/${_id}`);
+            // Проверяем, что текстовые данные были успешно сохранены
+            if (!postResponse.success) {
+                throw new Error('Ошибка при сохранении поста');
+
+            }
+
+            const postId = isEditing ? id : postResponse.postId;
+
+
+            // Если изображение загружено, отправляем его
+                const formData = new FormData();
+                formData.append('image', imageFile);
+                formData.append('postId', postId);
+                console.log(postId);
+                const { data: imageResponse } = isEditing
+                    ? await axios.patch(`/posts/image/${id}`, formData)
+                    : await axios.post('/posts/image', formData);
+                // Проверяем, что изображение успешно загружено
+                if (!imageResponse.success) {
+                    throw new Error('Ошибка при загрузке изображения');
+                }
+
+            // Переходим на страницу созданного поста
+            navigate(`/posts/${postId}`);
         } catch (err) {
-            console.warn(err);
+            console.warn('ОШИБКА ПРИ ОТПРАВКИ ДАННЫХ:', err);
             setShowNotFoundDialog(true);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -110,12 +129,12 @@ export const AddPost = () => {
                 Загрузить превью
             </Button>
             <input ref={inputFileRef} type="file" onChange={handleChangeFile} hidden />
-            {imageUrl && (
+            {(imageFile || imageUrl) && (
                 <>
                     <Button variant="contained" color="error" onClick={onClickRemoveImage}>
                         Удалить
                     </Button>
-                    <img className={styles.image} src={`${process.env.REACT_APP_API_URL}${imageUrl}`} alt="Uploaded" />
+                    <img className={styles.image} src={imageUrl ? `http://localhost:4444${imageUrl}` : URL.createObjectURL(imageFile)} alt="Uploaded" />
                 </>
             )}
             <br />

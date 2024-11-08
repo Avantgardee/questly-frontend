@@ -103,7 +103,7 @@ export const UserProfile = () => {
                 <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
                     <Avatar
                         alt={userData.fullName}
-                        src={userData.avatarUrl ? `${process.env.REACT_APP_API_URL}${userData.avatarUrl}` : '/noavatar.png'}
+                        src={userData.avatarUrl ? `http://localhost:4444${userData.avatarUrl}` : '/noavatar.png'}
                         sx={{ width: 150, height: 150 }}
                     />
                 </Box>
@@ -227,7 +227,7 @@ export const UserProfile = () => {
                                     key={obj._id}
                                     id={obj._id}
                                     title={obj.title}
-                                    imageUrl={obj.imageUrl ? `${process.env.REACT_APP_API_URL}${obj.imageUrl}` : ''}
+                                    imageUrl={obj.imageUrl ? `http://localhost:4444${obj.imageUrl}` : ''}
                                     user={obj.user}
                                     createdAt={convertToTimezone(obj.createdAt, timeZone)}
                                     viewsCount={obj.viewsCount}

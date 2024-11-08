@@ -100,7 +100,7 @@ export const FullPost = () => {
           <Post
               id={data._id}
               title={data.title}
-              imageUrl={data.imageUrl ? `${process.env.REACT_APP_API_URL}${data.imageUrl}` : ''}
+              imageUrl={data.imageUrl ? `http://localhost:4444${data.imageUrl}` : ''}
               user={data.user}
               createdAt={convertToTimezone(data.createdAt, timeZone)}
               viewsCount={data.viewsCount}
@@ -123,7 +123,7 @@ export const FullPost = () => {
               <div className={styles.root}>
                   <Avatar
                       classes={{root: styles.avatar}}
-                      src={userData.avatarUrl ? `${process.env.REACT_APP_API_URL}${userData.avatarUrl}` : '/noavatar.png'}
+                      src={userData.avatarUrl ? `http://localhost:4444${userData.avatarUrl}` : '/noavatar.png'}
                   />
                   <div className={styles.form}>
                       <TextField
