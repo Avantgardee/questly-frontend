@@ -1,5 +1,6 @@
+// pages/UserProfile.js (обновленная часть с кнопкой добавления заметки)
 import React, { useState } from 'react';
-import { Card, CardContent, Avatar, Button, Typography, Grid, Box, FormControlLabel, Switch } from '@mui/material';
+import { Card, CardContent, Avatar, Button, Typography, Grid, Box, FormControlLabel, Switch, IconButton } from '@mui/material';
 import styles from './Profile.module.scss';
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useParams } from "react-router-dom";
@@ -15,6 +16,9 @@ import { Post } from "../../components";
 import { formatInTimeZone } from 'date-fns-tz';
 import SearchBar from "../../components/SearchBar";
 import EditProfileDialog from "../../components/EditProfileDialog";
+
+import { Add as AddIcon } from '@mui/icons-material';
+import AddNoteDialog from "../../components/NoteModal/AddNoteModal";
 
 const convertToTimezone = (dateString, timeZone) => {
     return formatInTimeZone(new Date(dateString), timeZone, 'yyyy-MM-dd HH:mm:ss');
@@ -36,6 +40,7 @@ export const UserProfile = () => {
     const isUserLoading = userStatus === 'loading';
 
     const [editDialogOpen, setEditDialogOpen] = useState(false);
+    const [noteDialogOpen, setNoteDialogOpen] = useState(false);
 
     React.useEffect(() => {
         dispatch(fetchGetUser(id));
@@ -100,12 +105,29 @@ export const UserProfile = () => {
     return (
         <>
             <Card sx={{ maxWidth: 400, margin: 'auto', marginBottom: "40px", mt: 5, p: 2, display: 'flex', justifyContent: 'center', flexDirection: 'column' }}>
-                <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2, position: 'relative' }}>
                     <Avatar
                         alt={userData.fullName}
                         src={userData.avatarUrl ? `http://localhost:4444${userData.avatarUrl}` : '/noavatar.png'}
                         sx={{ width: 150, height: 150 }}
                     />
+                    {selectUserData && selectUserData._id === userData._id && (
+                        <IconButton
+                            sx={{
+                                position: 'absolute',
+                                right: 'calc(50% - 100px)',
+                                bottom: 0,
+                                backgroundColor: 'primary.main',
+                                color: 'white',
+                                '&:hover': {
+                                    backgroundColor: 'primary.dark',
+                                }
+                            }}
+                            onClick={() => setNoteDialogOpen(true)}
+                        >
+                            <AddIcon />
+                        </IconButton>
+                    )}
                 </Box>
                 {selectUserData && selectUserData._id !== userData._id && (
                     <Grid container spacing={2} justifyContent="center" sx={{ display: 'flex', justifyContent: 'center', flexDirection: 'column' }}>
@@ -244,6 +266,11 @@ export const UserProfile = () => {
                 open={editDialogOpen}
                 onClose={() => setEditDialogOpen(false)}
                 userData={userData}
+            />
+            <AddNoteDialog
+                open={noteDialogOpen}
+                onClose={() => setNoteDialogOpen(false)}
+                userId={userData._id}
             />
         </>
     );
