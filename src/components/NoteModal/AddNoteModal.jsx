@@ -60,11 +60,7 @@ const AddNoteDialog = ({ open, onClose, userId }) => {
     const handleDeleteConfirm = async () => {
         if (noteToDelete) {
             try {
-                const response = await axios.delete(`/notes/${noteToDelete}`, {
-                    headers: {
-                        'Authorization': 'Bearer ' + localStorage.getItem('token')
-                    }
-                });
+                const response = await axios.delete(`/notes/${noteToDelete}`);
 
                 if (response.data.success) {
                     showSnackbar('Заметка удалена', 'success');
@@ -226,8 +222,6 @@ const AddNoteDialog = ({ open, onClose, userId }) => {
         setCurrentPage(1);
         fetchNotes();
     };
-
-
 
     return (
         <>
@@ -421,7 +415,6 @@ const AddNoteDialog = ({ open, onClose, userId }) => {
                                         }
                                     }}
                                 />
-
                             </>
                         ) : (
                             <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 4 }}>

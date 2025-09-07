@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Typography from "@mui/material/Typography";
 import { useDispatch, useSelector } from "react-redux";
 import TextField from "@mui/material/TextField";
@@ -8,12 +8,14 @@ import { useForm } from "react-hook-form";
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
 import styles from "./Login.module.scss";
-import { fetchAuth, selectIsAuth } from "../../redux/slices/auth";
-import { Navigate } from "react-router-dom";
+import {fetchAuth, fetchAuthMe, selectIsAuth} from "../../redux/slices/auth";
+import { Navigate, useNavigate } from "react-router-dom";
+import { CircularProgress, Box } from "@mui/material";
 
 export const Login = () => {
     const isAuth = useSelector(selectIsAuth);
     const dispatch = useDispatch();
+    const navigate = useNavigate();
     const { register, handleSubmit, setError, formState: { errors, isValid } } = useForm({
         defaultValues: {
             email: 'test@test.ru',
@@ -23,6 +25,24 @@ export const Login = () => {
 
     const [open, setOpen] = useState(false);
     const [message, setMessage] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [authChecked, setAuthChecked] = useState(false);
+
+    // Проверяем авторизацию при загрузке компонента
+    useEffect(() => {
+        const checkAuth = async () => {
+            try {
+                await dispatch(fetchAuthMe()).unwrap();
+            } catch (error) {
+                // Ожидаемая ошибка - пользователь не авторизован
+                console.log('Пользователь не авторизован');
+            } finally {
+                setAuthChecked(true);
+            }
+        };
+
+        checkAuth();
+    }, [dispatch]);
 
     const handleClose = (event, reason) => {
         if (reason === 'clickaway') {
@@ -32,16 +52,34 @@ export const Login = () => {
     };
 
     const onSubmit = async (values) => {
-        const data = await dispatch(fetchAuth(values));
-        if (!data.payload) {
-            setMessage('Не удалось авторизоваться');
+        try {
+            setIsLoading(true);
+            const data = await dispatch(fetchAuth(values));
+
+            if (data.payload && data.payload._id) {
+                navigate('/');
+            } else {
+                setMessage('Не удалось авторизоваться');
+                setOpen(true);
+            }
+        } catch (error) {
+            setMessage('Ошибка при авторизации');
             setOpen(true);
-            return;
-        }
-        if ('token' in data.payload) {
-            window.localStorage.setItem('token', data.payload.token);
+        } finally {
+            setIsLoading(false);
         }
     };
+
+    // Показываем loader пока проверяем авторизацию
+    if (!authChecked) {
+        return (
+            <Paper classes={{ root: styles.root }}>
+                <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
+                    <CircularProgress />
+                </Box>
+            </Paper>
+        );
+    }
 
     if (isAuth) {
         return <Navigate to="/" />;
@@ -61,6 +99,7 @@ export const Login = () => {
                     helperText={errors.email?.message}
                     {...register('email', { required: 'Укажите почту' })}
                     fullWidth
+                    disabled={isLoading}
                 />
                 <TextField
                     className={styles.field}
@@ -70,9 +109,16 @@ export const Login = () => {
                     helperText={errors.password?.message}
                     {...register('password', { required: 'Укажите пароль' })}
                     fullWidth
+                    disabled={isLoading}
                 />
-                <Button type="submit" size="large" variant="contained" fullWidth>
-                    Войти
+                <Button
+                    type="submit"
+                    size="large"
+                    variant="contained"
+                    fullWidth
+                    disabled={isLoading}
+                >
+                    {isLoading ? <CircularProgress size={24} /> : 'Войти'}
                 </Button>
             </form>
             <Snackbar open={open} autoHideDuration={6000} onClose={handleClose}>

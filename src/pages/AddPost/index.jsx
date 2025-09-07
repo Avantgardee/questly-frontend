@@ -3,7 +3,7 @@ import TextField from '@mui/material/TextField';
 import Paper from '@mui/material/Paper';
 import Button from '@mui/material/Button';
 import SimpleMDE from 'react-simplemde-editor';
-import {Link, Navigate, useNavigate, useParams} from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import 'easymde/dist/easymde.min.css';
 import styles from './AddPost.module.scss';
 import { useSelector } from 'react-redux';
@@ -43,41 +43,36 @@ export const AddPost = () => {
         try {
             setIsLoading(true);
 
-            // Отправляем текстовые данные
             const fields = {
                 title,
                 tags: tags.split(','),
                 text,
             };
 
-            // Сохраняем пост
             const { data: postResponse } = isEditing
                 ? await axios.patch(`/posts/data/${id}`, fields)
                 : await axios.post('/posts/data', fields);
 
-            // Проверяем, что текстовые данные были успешно сохранены
             if (!postResponse.success) {
                 throw new Error('Ошибка при сохранении поста');
-
             }
 
             const postId = isEditing ? id : postResponse.postId;
 
-
-            // Если изображение загружено, отправляем его
+            if (imageFile) {
                 const formData = new FormData();
                 formData.append('image', imageFile);
                 formData.append('postId', postId);
-                console.log(postId);
+
                 const { data: imageResponse } = isEditing
                     ? await axios.patch(`/posts/image/${id}`, formData)
                     : await axios.post('/posts/image', formData);
-                // Проверяем, что изображение успешно загружено
+
                 if (!imageResponse.success) {
                     throw new Error('Ошибка при загрузке изображения');
                 }
+            }
 
-            // Переходим на страницу созданного поста
             navigate(`/posts/${postId}`);
         } catch (err) {
             console.warn('ОШИБКА ПРИ ОТПРАВКИ ДАННЫХ:', err);
@@ -119,8 +114,8 @@ export const AddPost = () => {
         []
     );
 
-    if (!window.localStorage.getItem('token') && !isAuth) {
-        return <Navigate to="/" />;
+    if (!isAuth) {
+        return <Navigate to="/login" />;
     }
 
     return (

@@ -1,32 +1,58 @@
 import React, { useState } from 'react';
 import { Button, Popper, Paper, List, ListItem, ListItemText, Link, Typography, Avatar, ListItemAvatar, Box } from "@mui/material";
 import NotificationsIcon from '@mui/icons-material/Notifications';
-import { formatDistanceToNow } from 'date-fns'; // Для красивого отображения времени
+import { formatDistanceToNow } from 'date-fns';
 
 const NotificationItem = ({ notification }) => {
     const { actionByUser, post, action, createdAt } = notification;
     let notificationText = '';
+
+    // Проверяем, что actionByUser существует
+    if (!actionByUser) {
+        return (
+            <ListItem alignItems="flex-start">
+                <ListItemText
+                    primary="Неизвестное уведомление"
+                    secondary={
+                        <Typography variant="body2" color="textSecondary">
+                            {createdAt ? formatDistanceToNow(new Date(createdAt), { addSuffix: true }) : 'Неизвестное время'}
+                        </Typography>
+                    }
+                />
+            </ListItem>
+        );
+    }
 
     // Генерация текста уведомления в зависимости от действия
     switch (action) {
         case 'subscribe':
             notificationText = (
                 <>
-                    Пользователь <Link href={`/profile/${actionByUser._id}`}>{actionByUser.fullName}</Link> подписался на вас.
+                    Пользователь <Link href={`/profile/${actionByUser._id}`}>{actionByUser.fullName || 'Неизвестный пользователь'}</Link> подписался на вас.
                 </>
             );
             break;
         case 'post':
             notificationText = (
                 <>
-                    Пользователь <Link href={`/profile/${actionByUser._id}`}>{actionByUser.fullName}</Link> добавил новую статью <Link href={`/posts/${post._id}`}>{post.title}</Link>.
+                    Пользователь <Link href={`/profile/${actionByUser._id}`}>{actionByUser.fullName || 'Неизвестный пользователь'}</Link> добавил новую статью{' '}
+                    {post && post._id ? (
+                        <Link href={`/posts/${post._id}`}>{post.title || 'Без названия'}</Link>
+                    ) : (
+                        'статью'
+                    )}.
                 </>
             );
             break;
         case 'comment':
             notificationText = (
                 <>
-                    Пользователь <Link href={`/profile/${actionByUser._id}`}>{actionByUser.fullName}</Link> добавил комментарий на вашу статью <Link href={`/posts/${post._id}`}>{post.title}</Link>.
+                    Пользователь <Link href={`/profile/${actionByUser._id}`}>{actionByUser.fullName || 'Неизвестный пользователь'}</Link> добавил комментарий на вашу статью{' '}
+                    {post && post._id ? (
+                        <Link href={`/posts/${post._id}`}>{post.title || 'Без названия'}</Link>
+                    ) : (
+                        'статью'
+                    )}.
                 </>
             );
             break;
@@ -37,8 +63,10 @@ const NotificationItem = ({ notification }) => {
     return (
         <ListItem alignItems="flex-start">
             <ListItemAvatar>
-                {/* Аватар пользователя, который выполнил действие */}
-                <Avatar alt={actionByUser.fullName} src={`http://localhost:4444${actionByUser.avatarUrl}`} />
+                <Avatar
+                    alt={actionByUser.fullName || 'Пользователь'}
+                    src={actionByUser.avatarUrl ? `http://localhost:4444${actionByUser.avatarUrl}` : '/noavatar.png'}
+                />
             </ListItemAvatar>
             <ListItemText
                 primary={notificationText}
@@ -50,11 +78,11 @@ const NotificationItem = ({ notification }) => {
                 sx={{ wordBreak: 'break-word' }}
             />
             {post?.imageUrl && post.imageUrl !== "" && (
-                <Box sx={{ marginLeft: 2,marginTop: 2 }}>
+                <Box sx={{ marginLeft: 2, marginTop: 2 }}>
                     <Avatar
                         variant="square"
                         src={`http://localhost:4444${post.imageUrl}`}
-                        alt={post.title}
+                        alt={post.title || 'Изображение статьи'}
                         sx={{ width: 50, height: 50 }}
                     />
                 </Box>
@@ -72,10 +100,13 @@ const NotificationPopper = ({ notifications }) => {
         setOpen((prevOpen) => !prevOpen);
     };
 
+    // Фильтруем уведомления, удаляя те, у которых нет actionByUser
+    const validNotifications = notifications.filter(notif => notif.actionByUser !== null);
+
     return (
         <>
             <Button onClick={handleClick} variant="contained" color="info" startIcon={<NotificationsIcon />}>
-                Уведомления
+                 {validNotifications.length > 0 ? `(${validNotifications.length})` : ''}
             </Button>
             <Popper open={open} anchorEl={anchorEl} placement="bottom-start">
                 <Paper
@@ -88,9 +119,9 @@ const NotificationPopper = ({ notifications }) => {
                     }}
                 >
                     <List>
-                        {notifications.length > 0 ? (
-                            notifications.map((notif) => (
-                                <NotificationItem key={notif.id} notification={notif} />
+                        {validNotifications.length > 0 ? (
+                            validNotifications.map((notif) => (
+                                <NotificationItem key={notif._id || notif.id || Math.random()} notification={notif} />
                             ))
                         ) : (
                             <ListItem>
@@ -104,5 +135,4 @@ const NotificationPopper = ({ notifications }) => {
     );
 };
 
-// Экспорт компонента для использования в других частях приложения
 export default NotificationPopper;

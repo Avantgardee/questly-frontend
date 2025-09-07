@@ -1,39 +1,61 @@
-import React, {useEffect, useState} from 'react';
+import React, { useEffect, useState } from 'react';
 import Button from '@mui/material/Button';
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import styles from './Header.module.scss';
 import Container from '@mui/material/Container';
 import { useDispatch, useSelector } from "react-redux";
-import {fetchAuthMe, logout, selectIsAuth} from "../../redux/slices/auth";
+import { fetchAuthMe, logout, selectIsAuth } from "../../redux/slices/auth";
 import { Avatar } from "@mui/material";
 import PeopleIcon from '@mui/icons-material/People';
 import CreateIcon from '@mui/icons-material/Create';
 import LogoutIcon from '@mui/icons-material/Logout';
 import ConfirmDialog from "../confirmDialog";
 import NotificationPopper from "../Notification/NotificationPopper";
-import {fetchPosts, fetchTags} from "../../redux/slices/posts";
-import {fetchNotifications} from "../../redux/slices/notification";  // Импортируем новый компонент
+import { fetchPosts, fetchTags } from "../../redux/slices/posts";
+import { fetchNotifications, removeInvalidNotifications } from "../../redux/slices/notification";
+import axios from '../../axios';
 
 export const Header = () => {
   const isAuth = useSelector(selectIsAuth);
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const location = useLocation();
   const userData = useSelector((state) => state.auth.data);
   const [openDialog, setOpenDialog] = useState(false);
   const notificationsData = useSelector((state) => state.notification);
   const notifications = notificationsData.status ? notificationsData.items : [];
   const isNotificationsLoading = notificationsData.status === 'loading';
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
-    // Выполняем сначала запросы для получения данных пользователя, постов и тегов
-    dispatch(fetchAuthMe());
-  }, [dispatch]);
+    const checkAuth = async () => {
+      try {
+        await dispatch(fetchAuthMe()).unwrap();
+      } catch (error) {
+        const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+        if (!isAuthPage) {
+          console.log('Требуется авторизация');
+        }
+      } finally {
+        setAuthChecked(true);
+      }
+    };
 
-// Отдельный useEffect для получения уведомлений после того, как пользователь будет загружен
+    checkAuth();
+  }, [dispatch, location.pathname]);
+
   useEffect(() => {
-    if (userData && userData._id) {
+    if (userData && userData._id && authChecked) {
       dispatch(fetchNotifications(userData._id));
     }
-  }, [dispatch, userData]);
+  }, [dispatch, userData, authChecked]);
+
+  // Удаляем невалидные уведомления при загрузке
+  useEffect(() => {
+    if (notifications.some(notif => notif.actionByUser === null)) {
+      dispatch(removeInvalidNotifications());
+    }
+  }, [dispatch, notifications]);
 
   const handleClickOpenDialog = () => {
     setOpenDialog(true);
@@ -43,11 +65,35 @@ export const Header = () => {
     setOpenDialog(false);
   };
 
-  const handleConfirm = () => {
-    setOpenDialog(false);
-    dispatch(logout());
-    window.localStorage.removeItem('token');
+  const handleConfirm = async () => {
+    try {
+      await axios.post('/auth/logout');
+      setOpenDialog(false);
+      dispatch(logout());
+      navigate('/login');
+    } catch (err) {
+      console.error('Ошибка при выходе:', err);
+    }
   };
+
+  if (!authChecked) {
+    return (
+        <div className={styles.root}>
+          <Container maxWidth="lg">
+            <div className={styles.inner}>
+              <div className={styles.buttons}>
+                <Link className={styles.logo} to="/" id="style-2" data-replace="Questly">
+                  <span>Questly</span>
+                </Link>
+              </div>
+              <div className={styles.buttons}>
+                <Button variant="outlined" disabled>Загрузка...</Button>
+              </div>
+            </div>
+          </Container>
+        </div>
+    );
+  }
 
   return (
       <div className={styles.root}>
@@ -87,7 +133,6 @@ export const Header = () => {
                         onClose={handleCloseDialog}
                         onConfirm={handleConfirm}
                     />
-                    {/* Используем компонент NotificationPopper и передаем уведомления */}
                     {isNotificationsLoading ? <> </> : <NotificationPopper notifications={[...notifications.slice()].reverse()} />}
                   </>
               ) : (
