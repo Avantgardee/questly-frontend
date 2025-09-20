@@ -139,6 +139,7 @@ const authSlice = createSlice({
 export const selectIsAuth = (state) => Boolean(state.auth.data);
 export const selectAuthError = (state) => state.auth.error;
 export const selectAuthStatus = (state) => state.auth.status;
-
+export const selectIsUserLoading = (state) => state.auth.status === 'loading';
+export const selectUserData = (state) => state.auth.data;
 export const authReducer = authSlice.reducer;
 export const { logout, clearError } = authSlice.actions;

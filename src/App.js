@@ -10,6 +10,7 @@ import {UserProfile} from "./pages/Profile/Profile";
 import SubscriptionsOrSubscribersPage from "./pages/SubsPage";
 import AllUsersPage from "./pages/AllUsers";
 import NotFound from "./pages/NotFound/NotFound";
+import Messages from "./pages/Messages/Messages";
 
 function App() {
     const dispatch = useDispatch();
@@ -17,27 +18,28 @@ function App() {
     React.useEffect(() => {
         dispatch(fetchAuthMe());
     }, [])
-  return (
-    <>
-      <Header />
-      <Container maxWidth="lg">
-          <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/profile/:id" element={<UserProfile />} />
-              <Route path="/profile/:id/:group" element={<SubscriptionsOrSubscribersPage />} />
-              <Route path="/users" element={<AllUsersPage />} />
-              <Route path="/tags/:id" element={<TagsPage />} />
-              <Route path="/posts/:id" element={<FullPost/>}/>
-              <Route path="/posts/:id/edit" element={<AddPost/>}/>
-              <Route path="/add-post" element={<AddPost/>}/>
-              <Route path="/login" element={<Login/>}/>
-              <Route path="/register" element={<Registration/>}/>
-              <Route path="*" element={<NotFound />} />
-          </Routes>
-
-      </Container>
-    </>
-  );
+    return (
+        <>
+            <Header />
+            <Container maxWidth="lg">
+                <Routes>
+                    <Route path="/" element={<Home />} />
+                    <Route path="/messages" element={<Messages />} />
+                    <Route path="/messages/:id" element={<Messages />} />
+                    <Route path="/profile/:id" element={<UserProfile />} />
+                    <Route path="/profile/:id/:group" element={<SubscriptionsOrSubscribersPage />} />
+                    <Route path="/users" element={<AllUsersPage />} />
+                    <Route path="/tags/:id" element={<TagsPage />} />
+                    <Route path="/posts/:id" element={<FullPost/>}/>
+                    <Route path="/posts/:id/edit" element={<AddPost/>}/>
+                    <Route path="/add-post" element={<AddPost/>}/>
+                    <Route path="/login" element={<Login/>}/>
+                    <Route path="/register" element={<Registration/>}/>
+                    <Route path="*" element={<NotFound />} />
+                </Routes>
+            </Container>
+        </>
+    );
 }
 
 export default App;

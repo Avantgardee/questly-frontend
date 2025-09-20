@@ -9,6 +9,7 @@ import { Avatar } from "@mui/material";
 import PeopleIcon from '@mui/icons-material/People';
 import CreateIcon from '@mui/icons-material/Create';
 import LogoutIcon from '@mui/icons-material/Logout';
+import MessageIcon from '@mui/icons-material/Message';
 import ConfirmDialog from "../confirmDialog";
 import NotificationPopper from "../Notification/NotificationPopper";
 import { fetchPosts, fetchTags } from "../../redux/slices/posts";
@@ -50,7 +51,6 @@ export const Header = () => {
     }
   }, [dispatch, userData, authChecked]);
 
-  // Удаляем невалидные уведомления при загрузке
   useEffect(() => {
     if (notifications.some(notif => notif.actionByUser === null)) {
       dispatch(removeInvalidNotifications());
@@ -74,6 +74,10 @@ export const Header = () => {
     } catch (err) {
       console.error('Ошибка при выходе:', err);
     }
+  };
+
+  const handleMessagesClick = () => {
+    navigate('/messages');
   };
 
   if (!authChecked) {
@@ -122,6 +126,14 @@ export const Header = () => {
             <div className={styles.buttons}>
               {isAuth ? (
                   <>
+                    <Button
+                        onClick={handleMessagesClick}
+                        variant="outlined"
+                        startIcon={<MessageIcon />}
+                        sx={{ mr: 1 }}
+                    >
+                      Сообщения
+                    </Button>
                     <Link to="/add-post">
                       <Button variant="contained" startIcon={<CreateIcon />}>Написать статью</Button>
                     </Link>

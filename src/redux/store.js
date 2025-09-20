@@ -5,6 +5,7 @@ import {commentReducer} from "./slices/comments";
 import {userReducer} from "./slices/user";
 import {subsReducer} from "./slices/subs";
 import {notificationReducer} from "./slices/notification";
+import messagesReducer from "./slices/messages";
 
 const store = configureStore({
     reducer: {
@@ -14,6 +15,7 @@ const store = configureStore({
         comment: commentReducer,
         user: userReducer,
         subs: subsReducer,
+        messages: messagesReducer,
     },
 });
 
