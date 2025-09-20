@@ -125,7 +125,6 @@ class WebSocketService {
         });
     }
 
-    // Этот метод больше не используется клиентом, но оставлен на случай другой логики
     confirmMessageDelivery(messageId) {
         return this.sendMessage({
             type: 'MESSAGE_DELIVERED',

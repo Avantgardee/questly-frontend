@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import {
     Container, Grid, Paper, TextField, Button, List, ListItem, ListItemAvatar,
     ListItemText, Avatar, Typography, IconButton, Box, Chip, Dialog, DialogTitle,
-    DialogContent, DialogActions, ListItemButton, InputAdornment, CircularProgress
+    DialogContent, DialogActions, ListItemButton, InputAdornment, CircularProgress, Badge
 } from '@mui/material';
 import { Send as SendIcon, AttachFile as AttachFileIcon, Search as SearchIcon, Add as AddIcon, Done, DoneAll } from '@mui/icons-material';
 import { fetchChatMessages, fetchChats, createChat, uploadMessageFiles, addMessage, updateMessageStatus } from "../../redux/slices/messages";
@@ -55,15 +55,15 @@ const Messages = () => {
 
             switch (message.type) {
                 case 'NEW_MESSAGE': {
+                    // !!! КЛЮЧЕВОЕ ИЗМЕНЕНИЕ !!!
+                    // Диспатчим addMessage для КАЖДОГО нового сообщения.
+                    // Редьюсер сам определит, как обновить состояние:
+                    // - обновит список чатов (всегда)
+                    // - добавит сообщение в открытый чат (если чат открыт)
+                    dispatch(addMessage(message.data));
+
                     const isMyMessage = message.data.sender._id === currentUser?._id;
                     const isCurrentChat = message.data.chat === activeChat?._id;
-
-                    // ИЗМЕНЕНИЕ: Самое важное исправление.
-                    // Мы диспатчим addMessage только если сообщение относится к текущему чату.
-                    // Для других чатов будет обновлен только список чатов (это делает сам редьюсер).
-                    if (isCurrentChat) {
-                        dispatch(addMessage(message.data));
-                    }
 
                     if (!isMyMessage && isCurrentChat) {
                         // Если пришло НЕ МОЕ сообщение в ТЕКУЩЕМ чате,
@@ -188,6 +188,7 @@ const Messages = () => {
     };
 
     const formatTime = (dateString) => {
+        if (!dateString) return '';
         return new Date(dateString).toLocaleTimeString('ru-RU', {
             hour: '2-digit',
             minute: '2-digit'
@@ -201,14 +202,13 @@ const Messages = () => {
 
     const getLastMessagePreview = (chat) => {
         if (!chat.lastMessage) return 'Нет сообщений';
-        if (chat.lastMessage.attachments && chat.lastMessage.attachments.length > 0 && !chat.lastMessage.text) {
-            return '📎 Вложение';
-        }
-        return chat.lastMessage.text || '📎 Вложение';
+        const senderPrefix = chat.lastMessage.sender?._id === userData?._id ? 'Вы: ' : '';
+        const textPreview = chat.lastMessage.text || '📎 Вложение';
+        return senderPrefix + textPreview;
     };
 
     const renderMessageStatus = (message) => {
-        if (message.sender._id !== userData?._id) return null;
+        if (!message || message.sender?._id !== userData?._id) return null;
 
         switch (message.status) {
             case 'sent':
@@ -260,6 +260,7 @@ const Messages = () => {
                             {chats.map((chat) => {
                                 const otherUser = getOtherParticipant(chat);
                                 if (!otherUser) return null;
+                                const isUnread = chat.unreadCount > 0;
 
                                 return (
                                     <ListItem
@@ -268,6 +269,14 @@ const Messages = () => {
                                         selected={currentChat?._id === chat._id}
                                         onClick={() => handleChatSelect(chat)}
                                         sx={{ mb: 1, borderRadius: 2 }}
+                                        secondaryAction={
+                                            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {formatTime(chat.lastMessage?.createdAt)}
+                                                </Typography>
+                                                <Badge badgeContent={chat.unreadCount} color="primary" sx={{ mt: 0.5 }} />
+                                            </Box>
+                                        }
                                     >
                                         <ListItemAvatar>
                                             <Avatar
@@ -277,8 +286,18 @@ const Messages = () => {
                                         </ListItemAvatar>
                                         <ListItemText
                                             primary={otherUser.fullName || 'Пользователь'}
-                                            secondary={getLastMessagePreview(chat)}
-                                            secondaryTypographyProps={{ noWrap: true }}
+                                            secondary={
+                                                <Box component="span" sx={{ display: 'flex', alignItems: 'center' }}>
+                                                    {renderMessageStatus(chat.lastMessage)}
+                                                    <Typography component="span" variant="body2" color="text.secondary" noWrap sx={{ ml: chat.lastMessage?.sender?._id === userData?._id ? 0.5 : 0, fontWeight: isUnread ? 'bold' : 'normal' }}>
+                                                        {getLastMessagePreview(chat)}
+                                                    </Typography>
+                                                </Box>
+                                            }
+                                            primaryTypographyProps={{
+                                                fontWeight: isUnread ? 'bold' : 'normal',
+                                                color: isUnread ? 'text.primary' : 'inherit'
+                                            }}
                                         />
                                     </ListItem>
                                 );
@@ -287,6 +306,7 @@ const Messages = () => {
                     </Paper>
                 </Grid>
 
+                {/* Правая часть с чатом остается без изменений */}
                 <Grid item xs={12} md={8}>
                     <Paper sx={{ p: 2, height: '80vh', display: 'flex', flexDirection: 'column' }}>
                         {currentChat ? (
@@ -403,6 +423,7 @@ const Messages = () => {
                 </Grid>
             </Grid>
 
+            {/* Диалоговое окно остается без изменений */}
             <Dialog open={openNewChatDialog} onClose={() => setOpenNewChatDialog(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>Новый чат</DialogTitle>
                 <DialogContent>
