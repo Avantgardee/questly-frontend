@@ -1,5 +1,3 @@
-// services/websocket.js
-
 class WebSocketService {
     constructor() {
         this.socket = null;
@@ -33,8 +31,6 @@ class WebSocketService {
                     clearInterval(this.reconnectInterval);
                     this.reconnectInterval = null;
                 }
-
-                // Повторно отправляем ожидающие сообщения
                 this.resendPendingMessages();
             };
 
@@ -97,7 +93,6 @@ class WebSocketService {
             }
         }
 
-        // Сохраняем сообщение для отправки после подключения, если сокет не открыт
         if (message.type === 'SEND_MESSAGE' && message.data) {
             this.pendingMessages.set(message.data.chatId + Date.now(), message);
         }
@@ -122,6 +117,13 @@ class WebSocketService {
         return this.sendMessage({
             type: 'READ_MESSAGE',
             data: { messageId }
+        });
+    }
+
+    markChatAsRead(chatId) {
+        return this.sendMessage({
+            type: 'MARK_CHAT_AS_READ',
+            data: { chatId }
         });
     }
 

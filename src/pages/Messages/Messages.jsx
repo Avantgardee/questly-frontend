@@ -7,7 +7,7 @@ import {
     DialogContent, DialogActions, ListItemButton, InputAdornment, CircularProgress, Badge
 } from '@mui/material';
 import { Send as SendIcon, AttachFile as AttachFileIcon, Search as SearchIcon, Add as AddIcon, Done, DoneAll } from '@mui/icons-material';
-import { fetchChatMessages, fetchChats, createChat, uploadMessageFiles, addMessage, updateMessageStatus } from "../../redux/slices/messages";
+import { fetchChatMessages, fetchChats, createChat, uploadMessageFiles, addMessage, updateMessageStatus, setCurrentChat } from "../../redux/slices/messages";
 import { fetchGetSubs } from "../../redux/slices/subs";
 import { webSocketService } from "../../services/websocket";
 import { selectIsAuth } from "../../redux/slices/auth";
@@ -38,7 +38,6 @@ const Messages = () => {
         userDataRef.current = userData;
     }, [userData]);
 
-    // Единый useEffect для управления WebSocket
     useEffect(() => {
         if (!isAuth || !userData?._id) {
             if (isAuth) return;
@@ -55,25 +54,17 @@ const Messages = () => {
 
             switch (message.type) {
                 case 'NEW_MESSAGE': {
-                    // !!! КЛЮЧЕВОЕ ИЗМЕНЕНИЕ !!!
-                    // Диспатчим addMessage для КАЖДОГО нового сообщения.
-                    // Редьюсер сам определит, как обновить состояние:
-                    // - обновит список чатов (всегда)
-                    // - добавит сообщение в открытый чат (если чат открыт)
-                    dispatch(addMessage(message.data));
+                    dispatch(addMessage({ ...message.data, currentUserId: currentUser?._id }));
 
-                    const isMyMessage = message.data.sender._id === currentUser?._id;
-                    const isCurrentChat = message.data.chat === activeChat?._id;
+                    const newMessage = message.data.message;
+                    const isMyMessage = newMessage.sender._id === currentUser?._id;
+                    const isCurrentChat = newMessage.chat === activeChat?._id;
 
                     if (!isMyMessage && isCurrentChat) {
-                        // Если пришло НЕ МОЕ сообщение в ТЕКУЩЕМ чате,
-                        // немедленно подтверждаем ДОСТАВКУ и отправляем событие ПРОЧТЕНИЯ.
-                        webSocketService.sendMessage({ type: 'MESSAGE_DELIVERED', data: { messageId: message.data._id } });
-                        webSocketService.markMessageAsRead(message.data._id);
+                        webSocketService.markMessageAsRead(newMessage._id);
+                        webSocketService.markChatAsRead(newMessage.chat);
                     } else if (!isMyMessage && !isCurrentChat) {
-                        // Если пришло НЕ МОЕ сообщение в ДРУГОМ чате,
-                        // подтверждаем только ДОСТАВКУ.
-                        webSocketService.sendMessage({ type: 'MESSAGE_DELIVERED', data: { messageId: message.data._id } });
+                        webSocketService.sendMessage({ type: 'MESSAGE_DELIVERED', data: { messageId: newMessage._id } });
                     }
                     break;
                 }
@@ -90,6 +81,10 @@ const Messages = () => {
                         messageId: message.data.messageId,
                         status: 'read'
                     }));
+                    break;
+
+                case 'CHAT_MARKED_AS_READ':
+                    console.log('Chat marked as read confirmed by server:', message.data);
                     break;
 
                 default:
@@ -117,7 +112,6 @@ const Messages = () => {
         };
     }, [dispatch, isAuth, navigate, userData?._id]);
 
-
     useEffect(() => {
         scrollToBottom();
         if (currentChat && messages.length > 0 && userData) {
@@ -137,10 +131,17 @@ const Messages = () => {
         unreadMessages.forEach(msg => {
             webSocketService.markMessageAsRead(msg._id);
         });
+
+        if (currentChat && unreadMessages.length > 0) {
+            webSocketService.markChatAsRead(currentChat._id);
+        }
     };
 
     const handleChatSelect = (chat) => {
-        dispatch({ type: 'messages/setCurrentChat', payload: chat });
+        if (chat.unreadCount > 0) {
+            webSocketService.markChatAsRead(chat._id);
+        }
+        dispatch(setCurrentChat(chat));
         dispatch(fetchChatMessages(chat._id));
     };
 
@@ -177,8 +178,11 @@ const Messages = () => {
 
     const handleCreateChat = async (participantId) => {
         try {
-            const result = await dispatch(createChat(participantId));
-            if (createChat.fulfilled.match(result)) {
+            const resultAction = await dispatch(createChat(participantId));
+            if (createChat.fulfilled.match(resultAction)) {
+                const newChat = resultAction.payload;
+                dispatch(setCurrentChat(newChat));
+                dispatch(fetchChatMessages(newChat._id));
                 setOpenNewChatDialog(false);
                 setSearchTerm('');
             }
@@ -216,7 +220,7 @@ const Messages = () => {
             case 'delivered':
                 return <DoneAll sx={{ fontSize: 16, opacity: 0.5 }} />;
             case 'read':
-                return <DoneAll sx={{ fontSize: 16, color: 'primary.main' }} />;
+                return <DoneAll sx={{ fontSize: 16 }} />;
             default:
                 return <Done sx={{ fontSize: 16, opacity: 0.5 }} />;
         }
@@ -274,7 +278,9 @@ const Messages = () => {
                                                 <Typography variant="caption" color="text.secondary">
                                                     {formatTime(chat.lastMessage?.createdAt)}
                                                 </Typography>
-                                                <Badge badgeContent={chat.unreadCount} color="primary" sx={{ mt: 0.5 }} />
+                                                {isUnread && (
+                                                    <Badge badgeContent={chat.unreadCount} color="primary" sx={{ mt: 0.5 }} />
+                                                )}
                                             </Box>
                                         }
                                     >
@@ -305,8 +311,6 @@ const Messages = () => {
                         </List>
                     </Paper>
                 </Grid>
-
-                {/* Правая часть с чатом остается без изменений */}
                 <Grid item xs={12} md={8}>
                     <Paper sx={{ p: 2, height: '80vh', display: 'flex', flexDirection: 'column' }}>
                         {currentChat ? (
@@ -423,7 +427,6 @@ const Messages = () => {
                 </Grid>
             </Grid>
 
-            {/* Диалоговое окно остается без изменений */}
             <Dialog open={openNewChatDialog} onClose={() => setOpenNewChatDialog(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>Новый чат</DialogTitle>
                 <DialogContent>

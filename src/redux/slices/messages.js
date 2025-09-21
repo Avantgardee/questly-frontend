@@ -1,19 +1,25 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import axios from '../../axios';
 
-// Thunks остаются без изменений
-export const fetchChats = createAsyncThunk('messages/fetchChats', async (_, { rejectWithValue }) => {
+export const fetchChats = createAsyncThunk('messages/fetchChats', async (_, { rejectWithValue, getState }) => {
     try {
         const { data } = await axios.get('/chats');
-        return data;
+        const currentUserId = getState().auth.data._id;
+        const chats = data.map(chat => ({
+            ...chat,
+            unreadCount: chat.unreadCount[currentUserId] || 0,
+        }));
+        return chats;
     } catch (error) {
         return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки чатов');
     }
 });
 
-export const createChat = createAsyncThunk('messages/createChat', async (participantId, { rejectWithValue }) => {
+export const createChat = createAsyncThunk('messages/createChat', async (participantId, { rejectWithValue, getState }) => {
     try {
         const { data } = await axios.post('/chats/create', { participantId });
+        const currentUserId = getState().auth.data._id;
+        data.unreadCount = data.unreadCount[currentUserId] || 0;
         return data;
     } catch (error) {
         return rejectWithValue(error.response?.data?.message || 'Ошибка создания чата');
@@ -102,32 +108,40 @@ const messagesSlice = createSlice({
     name: 'messages',
     initialState,
     reducers: {
-        // ИЗМЕНЕНИЕ: Логика обновления чатов и счетчика непрочитанных
         addMessage: (state, action) => {
-            const newMessage = action.payload;
-            const isMyMessage = state.auth?.data?._id === newMessage.sender._id; // Предполагая, что auth state доступен
+            const { message: newMessage, chat: updatedChatData, currentUserId } = action.payload;
 
-            // 1. Логика для массива сообщений (только если чат открыт)
             if (state.currentChat?._id === newMessage.chat) {
                 if (!state.messages.some(msg => msg._id === newMessage._id)) {
                     state.messages.push(newMessage);
                 }
             }
-
-            // 2. Логика для списка чатов (выполняется всегда)
             const chatIndex = state.chats.findIndex(chat => chat._id === newMessage.chat);
-            if (chatIndex !== -1) {
-                const updatedChat = state.chats[chatIndex];
-                updatedChat.lastMessage = newMessage; // Обновляем последнее сообщение
 
-                // Увеличиваем счетчик непрочитанных, если сообщение не мое и чат не активен
-                if (!isMyMessage && state.currentChat?._id !== newMessage.chat) {
-                    updatedChat.unreadCount = (updatedChat.unreadCount || 0) + 1;
+            if (chatIndex !== -1) {
+                const existingChat = state.chats[chatIndex];
+                existingChat.lastMessage = newMessage;
+
+                if (state.currentChat?._id !== newMessage.chat) {
+                    if (updatedChatData && updatedChatData.unreadCount && currentUserId) {
+                        existingChat.unreadCount = updatedChatData.unreadCount[currentUserId] || 0;
+                    }
+                } else {
+                    existingChat.unreadCount = 0;
                 }
 
-                // Перемещаем чат наверх списка
                 state.chats.splice(chatIndex, 1);
-                state.chats.unshift(updatedChat);
+                state.chats.unshift(existingChat);
+
+            } else {
+                if (updatedChatData && currentUserId) {
+                    const newChat = {
+                        ...updatedChatData,
+                        unreadCount: state.currentChat?._id === newMessage.chat ? 0 : (updatedChatData.unreadCount[currentUserId] || 0),
+                        lastMessage: newMessage,
+                    };
+                    state.chats.unshift(newChat);
+                }
             }
         },
         updateMessageStatus: (state, action) => {
@@ -136,7 +150,6 @@ const messagesSlice = createSlice({
             if (message) {
                 message.status = status;
             }
-            // Обновляем статус и в списке чатов
             const chat = state.chats.find(c => c.lastMessage?._id === messageId);
             if (chat?.lastMessage) {
                 chat.lastMessage.status = status;
@@ -144,9 +157,8 @@ const messagesSlice = createSlice({
         },
         setCurrentChat: (state, action) => {
             state.currentChat = action.payload;
-            state.messages = []; // Очищаем сообщения при смене чата
+            state.messages = [];
 
-            // ИЗМЕНЕНИЕ: Обнуляем счетчик непрочитанных при открытии чата
             if (action.payload) {
                 const chatInList = state.chats.find(c => c._id === action.payload._id);
                 if (chatInList) {
@@ -179,8 +191,7 @@ const messagesSlice = createSlice({
             .addCase(fetchChats.pending, (state) => { state.status = 'loading'; })
             .addCase(fetchChats.fulfilled, (state, action) => {
                 state.status = 'succeeded';
-                // ИЗМЕНЕНИЕ: Инициализируем счетчик непрочитанных
-                state.chats = action.payload.map(chat => ({ ...chat, unreadCount: 0 }));
+                state.chats = action.payload;
             })
             .addCase(fetchChats.rejected, (state, action) => {
                 state.status = 'failed';
@@ -188,8 +199,7 @@ const messagesSlice = createSlice({
             })
             .addCase(createChat.fulfilled, (state, action) => {
                 if (!state.chats.some(chat => chat._id === action.payload._id)) {
-                    // ИЗМЕНЕНИЕ: Инициализируем счетчик непрочитанных
-                    state.chats.unshift({ ...action.payload, unreadCount: 0 });
+                    state.chats.unshift(action.payload);
                 }
                 state.currentChat = action.payload;
                 state.messages = [];
