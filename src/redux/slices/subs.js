@@ -1,14 +1,31 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import axios from "../../axios";
 
-export const fetchGetSubs = createAsyncThunk('subs/fetchGetSubs', async (params) => {
-    const { data } = await axios.get(`/profile/${params.id}/${params.group}`);
-    return data;
+export const fetchGetSubs = createAsyncThunk('subs/fetchGetSubs', async (params, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.get(`/profile/${params.id}/${params.group}`);
+        return data;
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки подписчиков');
+    }
 });
 
-export const fetchGetAllUser = createAsyncThunk('subs/fetchGetAllUser', async () => {
-    const { data } = await axios.get(`/users`);
-    return data;
+export const fetchGetSubscriptions = createAsyncThunk('subs/fetchGetSubscriptions', async (params, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.get(`/profile/${params.id}/subscriptions`);
+        return data;
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки подписок');
+    }
+});
+
+export const fetchGetAllUser = createAsyncThunk('subs/fetchGetAllUser', async (_, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.get(`/users`);
+        return data;
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки пользователей');
+    }
 });
 
 const initialState = {
@@ -41,6 +58,19 @@ const subsSlice = createSlice({
             state.filteredItems = action.payload;
         },
         [fetchGetSubs.rejected]: (state) => {
+            state.status = 'error';
+            state.items = [];
+            state.filteredItems = [];
+        },
+        [fetchGetSubscriptions.pending]: (state) => {
+            state.status = 'loading';
+        },
+        [fetchGetSubscriptions.fulfilled]: (state, action) => {
+            state.status = 'loaded';
+            state.items = action.payload;
+            state.filteredItems = action.payload;
+        },
+        [fetchGetSubscriptions.rejected]: (state) => {
             state.status = 'error';
             state.items = [];
             state.filteredItems = [];

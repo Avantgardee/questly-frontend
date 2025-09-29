@@ -17,7 +17,7 @@ export const UserInfo = ({ avatarUrl, fullName, _id, additionalText, isLoading }
       <Avatar
           className={styles.avatar}
           alt={fullName}
-          src={avatarUrl ? `${process.env.REACT_APP_API_URL}${avatarUrl}` : '/noavatar.png'}
+          src={avatarUrl ? `http://localhost:4444${avatarUrl}` : '/noavatar.png'}
       />
       <div className={styles.userDetails}>
         <span className={styles.userName}>{fullName}</span>

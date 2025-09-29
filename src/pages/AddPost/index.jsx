@@ -3,7 +3,7 @@ import TextField from '@mui/material/TextField';
 import Paper from '@mui/material/Paper';
 import Button from '@mui/material/Button';
 import SimpleMDE from 'react-simplemde-editor';
-import {Link, Navigate, useNavigate, useParams} from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import 'easymde/dist/easymde.min.css';
 import styles from './AddPost.module.scss';
 import { useSelector } from 'react-redux';
@@ -22,23 +22,17 @@ export const AddPost = () => {
     const [imageUrl, setImageUrl] = useState('');
     const inputFileRef = React.useRef(null);
     const [showNotFoundDialog, setShowNotFoundDialog] = useState(false);
-
+    const [imageFile, setImageFile] = useState(null);
     const isEditing = Boolean(id);
 
-    const handleChangeFile = async (event) => {
-        try {
-            const formData = new FormData();
-            formData.append('image', event.target.files[0]);
-            const { data } = await axios.post('/upload', formData);
-            setImageUrl(data.url);
-        } catch (err) {
-            console.warn(err);
-            setShowNotFoundDialog(true);
-        }
+    const handleChangeFile = (event) => {
+        setImageFile(event.target.files[0]);
+        setImageUrl('');
     };
 
-    const onClickRemoveImage = async () => {
+    const onClickRemoveImage = () => {
         setImageUrl('');
+        setImageFile(null);
     };
 
     const onChange = (value) => {
@@ -51,20 +45,40 @@ export const AddPost = () => {
 
             const fields = {
                 title,
-                imageUrl,
                 tags: tags.split(','),
                 text,
             };
 
-            const { data } = isEditing
-                ? await axios.patch(`/posts/${id}`, fields)
-                : await axios.post('/posts', fields);
+            const { data: postResponse } = isEditing
+                ? await axios.patch(`/posts/data/${id}`, fields)
+                : await axios.post('/posts/data', fields);
 
-            const _id = isEditing ? id : data._id;
-            navigate(`/posts/${_id}`);
+            if (!postResponse.success) {
+                throw new Error('Ошибка при сохранении поста');
+            }
+
+            const postId = isEditing ? id : postResponse.postId;
+
+            if (imageFile) {
+                const formData = new FormData();
+                formData.append('image', imageFile);
+                formData.append('postId', postId);
+
+                const { data: imageResponse } = isEditing
+                    ? await axios.patch(`/posts/image/${id}`, formData)
+                    : await axios.post('/posts/image', formData);
+
+                if (!imageResponse.success) {
+                    throw new Error('Ошибка при загрузке изображения');
+                }
+            }
+
+            navigate(`/posts/${postId}`);
         } catch (err) {
-            console.warn(err);
+            console.warn('ОШИБКА ПРИ ОТПРАВКИ ДАННЫХ:', err);
             setShowNotFoundDialog(true);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -100,8 +114,8 @@ export const AddPost = () => {
         []
     );
 
-    if (!window.localStorage.getItem('token') && !isAuth) {
-        return <Navigate to="/" />;
+    if (!isAuth) {
+        return <Navigate to="/login" />;
     }
 
     return (
@@ -110,12 +124,12 @@ export const AddPost = () => {
                 Загрузить превью
             </Button>
             <input ref={inputFileRef} type="file" onChange={handleChangeFile} hidden />
-            {imageUrl && (
+            {(imageFile || imageUrl) && (
                 <>
                     <Button variant="contained" color="error" onClick={onClickRemoveImage}>
                         Удалить
                     </Button>
-                    <img className={styles.image} src={`${process.env.REACT_APP_API_URL}${imageUrl}`} alt="Uploaded" />
+                    <img className={styles.image} src={imageUrl ? `http://localhost:4444${imageUrl}` : URL.createObjectURL(imageFile)} alt="Uploaded" />
                 </>
             )}
             <br />
