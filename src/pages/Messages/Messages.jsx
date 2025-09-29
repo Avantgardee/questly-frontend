@@ -1,13 +1,16 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
     Container, Grid, Paper, TextField, Button, List, ListItem, ListItemAvatar,
     ListItemText, Avatar, Typography, IconButton, Box, Chip, Dialog, DialogTitle,
     DialogContent, DialogActions, ListItemButton, InputAdornment, CircularProgress, Badge
 } from '@mui/material';
 import { Send as SendIcon, AttachFile as AttachFileIcon, Search as SearchIcon, Add as AddIcon, Done, DoneAll } from '@mui/icons-material';
-import { fetchChatMessages, fetchChats, createChat, uploadMessageFiles, addMessage, updateMessageStatus, setCurrentChat } from "../../redux/slices/messages";
+import {
+    fetchChatMessages, fetchChats, createChat, uploadMessageFiles, addMessage,
+    updateMessageStatus, setCurrentChat
+} from "../../redux/slices/messages";
 import { fetchGetSubs } from "../../redux/slices/subs";
 import { webSocketService } from "../../services/websocket";
 import { selectIsAuth } from "../../redux/slices/auth";
@@ -16,8 +19,9 @@ import axios from '../../axios';
 const Messages = () => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
+    const location = useLocation();
     const isAuth = useSelector(selectIsAuth);
-    const { chats, messages, currentChat } = useSelector(state => state.messages);
+    const { chats, messages, currentChat, status: chatsStatus } = useSelector(state => state.messages);
     const userData = useSelector(state => state.auth.data);
     const { items: subscribers, status: subsStatus } = useSelector(state => state.subs);
 
@@ -25,15 +29,17 @@ const Messages = () => {
     const [selectedFiles, setSelectedFiles] = useState([]);
     const [openNewChatDialog, setOpenNewChatDialog] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [highlightedMessage, setHighlightedMessage] = useState(null);
+
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
-
     const currentChatRef = useRef(currentChat);
+    const userDataRef = useRef(userData);
+
     useEffect(() => {
         currentChatRef.current = currentChat;
     }, [currentChat]);
 
-    const userDataRef = useRef(userData);
     useEffect(() => {
         userDataRef.current = userData;
     }, [userData]);
@@ -68,25 +74,21 @@ const Messages = () => {
                     }
                     break;
                 }
-
                 case 'MESSAGE_DELIVERED':
                     dispatch(updateMessageStatus({
                         messageId: message.data.messageId,
                         status: 'delivered'
                     }));
                     break;
-
                 case 'MESSAGE_READ':
                     dispatch(updateMessageStatus({
                         messageId: message.data.messageId,
                         status: 'read'
                     }));
                     break;
-
                 case 'CHAT_MARKED_AS_READ':
                     console.log('Chat marked as read confirmed by server:', message.data);
                     break;
-
                 default:
                     break;
             }
@@ -113,7 +115,37 @@ const Messages = () => {
     }, [dispatch, isAuth, navigate, userData?._id]);
 
     useEffect(() => {
-        scrollToBottom();
+        const params = new URLSearchParams(location.search);
+        const chatId = params.get('chatId');
+        const messageId = params.get('messageId');
+
+        if (chatId && chatsStatus === 'succeeded') {
+            const targetChat = chats.find(c => c._id === chatId);
+            if (targetChat && currentChat?._id !== chatId) {
+                handleChatSelect(targetChat);
+            }
+            if (messageId) {
+                setHighlightedMessage(messageId);
+            }
+        }
+    }, [location.search, chatsStatus, chats]);
+
+    useEffect(() => {
+        if (highlightedMessage && messages.length > 0) {
+            const element = document.getElementById(`message-${highlightedMessage}`);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => {
+                    setHighlightedMessage(null);
+                    navigate('/messages', { replace: true });
+                }, 3000);
+            }
+        } else if (!highlightedMessage) {
+            scrollToBottom();
+        }
+    }, [highlightedMessage, messages, navigate]);
+
+    useEffect(() => {
         if (currentChat && messages.length > 0 && userData) {
             markVisibleMessagesAsRead();
         }
@@ -127,11 +159,9 @@ const Messages = () => {
         const unreadMessages = messages.filter(msg =>
             msg.sender._id !== userData._id && msg.status !== 'read'
         );
-
         unreadMessages.forEach(msg => {
             webSocketService.markMessageAsRead(msg._id);
         });
-
         if (currentChat && unreadMessages.length > 0) {
             webSocketService.markChatAsRead(currentChat._id);
         }
@@ -147,7 +177,6 @@ const Messages = () => {
 
     const handleSendMessage = async () => {
         if ((!messageText.trim() && selectedFiles.length === 0) || !currentChat) return;
-
         let attachments = [];
         if (selectedFiles.length > 0) {
             const uploadResultAction = await dispatch(uploadMessageFiles(selectedFiles));
@@ -155,7 +184,6 @@ const Messages = () => {
                 attachments = uploadResultAction.payload;
             }
         }
-
         webSocketService.sendMessage({
             type: 'SEND_MESSAGE',
             data: {
@@ -164,7 +192,6 @@ const Messages = () => {
                 attachments
             }
         });
-
         setMessageText('');
         setSelectedFiles([]);
         if (fileInputRef.current) {
@@ -193,10 +220,7 @@ const Messages = () => {
 
     const formatTime = (dateString) => {
         if (!dateString) return '';
-        return new Date(dateString).toLocaleTimeString('ru-RU', {
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        return new Date(dateString).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     };
 
     const getOtherParticipant = (chat) => {
@@ -213,16 +237,11 @@ const Messages = () => {
 
     const renderMessageStatus = (message) => {
         if (!message || message.sender?._id !== userData?._id) return null;
-
         switch (message.status) {
-            case 'sent':
-                return <Done sx={{ fontSize: 16, opacity: 0.5 }} />;
-            case 'delivered':
-                return <DoneAll sx={{ fontSize: 16, opacity: 0.5 }} />;
-            case 'read':
-                return <DoneAll sx={{ fontSize: 16 }} />;
-            default:
-                return <Done sx={{ fontSize: 16, opacity: 0.5 }} />;
+            case 'sent': return <Done sx={{ fontSize: 16, opacity: 0.5 }} />;
+            case 'delivered': return <DoneAll sx={{ fontSize: 16, opacity: 0.5 }} />;
+            case 'read': return <DoneAll sx={{ fontSize: 16 }} />;
+            default: return <Done sx={{ fontSize: 16, opacity: 0.5 }} />;
         }
     };
 
@@ -250,22 +269,15 @@ const Messages = () => {
                     <Paper sx={{ p: 2, height: '80vh', overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                             <Typography variant="h6">Чаты</Typography>
-                            <Button
-                                variant="contained"
-                                size="small"
-                                startIcon={<AddIcon />}
-                                onClick={() => setOpenNewChatDialog(true)}
-                            >
+                            <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => setOpenNewChatDialog(true)}>
                                 Новый чат
                             </Button>
                         </Box>
-
                         <List sx={{ flex: 1, overflow: 'auto' }}>
                             {chats.map((chat) => {
                                 const otherUser = getOtherParticipant(chat);
                                 if (!otherUser) return null;
                                 const isUnread = chat.unreadCount > 0;
-
                                 return (
                                     <ListItem
                                         key={chat._id}
@@ -278,17 +290,12 @@ const Messages = () => {
                                                 <Typography variant="caption" color="text.secondary">
                                                     {formatTime(chat.lastMessage?.createdAt)}
                                                 </Typography>
-                                                {isUnread && (
-                                                    <Badge badgeContent={chat.unreadCount} color="primary" sx={{ mt: 0.5 }} />
-                                                )}
+                                                {isUnread && <Badge badgeContent={chat.unreadCount} color="primary" sx={{ mt: 0.5 }} />}
                                             </Box>
                                         }
                                     >
                                         <ListItemAvatar>
-                                            <Avatar
-                                                src={otherUser.avatarUrl ? `http://localhost:4444${otherUser.avatarUrl}` : '/noavatar.png'}
-                                                alt={otherUser.fullName || 'User'}
-                                            />
+                                            <Avatar src={otherUser.avatarUrl ? `http://localhost:4444${otherUser.avatarUrl}` : '/noavatar.png'} alt={otherUser.fullName || 'User'} />
                                         </ListItemAvatar>
                                         <ListItemText
                                             primary={otherUser.fullName || 'Пользователь'}
@@ -300,10 +307,7 @@ const Messages = () => {
                                                     </Typography>
                                                 </Box>
                                             }
-                                            primaryTypographyProps={{
-                                                fontWeight: isUnread ? 'bold' : 'normal',
-                                                color: isUnread ? 'text.primary' : 'inherit'
-                                            }}
+                                            primaryTypographyProps={{ fontWeight: isUnread ? 'bold' : 'normal', color: isUnread ? 'text.primary' : 'inherit' }}
                                         />
                                     </ListItem>
                                 );
@@ -316,62 +320,48 @@ const Messages = () => {
                         {currentChat ? (
                             <>
                                 <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-                                    <Typography variant="h6">
-                                        {getOtherParticipant(currentChat)?.fullName || 'Пользователь'}
-                                    </Typography>
+                                    <Typography variant="h6">{getOtherParticipant(currentChat)?.fullName || 'Пользователь'}</Typography>
                                 </Box>
-
                                 <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-                                    {messages.map((message) => (
-                                        <Box
-                                            key={message._id}
-                                            sx={{
-                                                display: 'flex',
-                                                justifyContent: message.sender._id === userData._id ? 'flex-end' : 'flex-start',
-                                                mb: 2
-                                            }}
-                                        >
-                                            <Box
-                                                sx={{
-                                                    maxWidth: '70%',
-                                                    p: 2,
-                                                    borderRadius: 2,
-                                                    bgcolor: message.sender._id === userData._id ? 'primary.main' : 'grey.100',
-                                                    color: message.sender._id === userData._id ? 'white' : 'text.primary'
-                                                }}
-                                            >
-                                                {message.attachments && message.attachments.map((file, index) => (
-                                                    <Box key={index} sx={{ mb: 1 }}>
-                                                        {file.match(/\.(jpg|jpeg|png|gif)$/i) ? (
-                                                            <img
-                                                                src={`http://localhost:4444${file}`}
-                                                                alt="Вложение"
-                                                                style={{ maxWidth: '100%', borderRadius: 4 }}
-                                                            />
-                                                        ) : (
-                                                            <Chip
-                                                                label={file.split('/').pop()}
-                                                                onClick={() => window.open(`http://localhost:4444${file}`)}
-                                                                variant="outlined"
-                                                            />
-                                                        )}
+                                    {messages.map((message) => {
+                                        const isMyMessage = message.sender._id === userData._id;
+                                        const isHighlighted = highlightedMessage === message._id;
+                                        return (
+                                            <Box id={`message-${message._id}`} key={message._id} sx={{ display: 'flex', justifyContent: isMyMessage ? 'flex-end' : 'flex-start', mb: 2 }}>
+                                                <Box
+                                                    sx={{
+                                                        maxWidth: '70%',
+                                                        p: 2,
+                                                        borderRadius: 2,
+                                                        bgcolor: isHighlighted ? 'secondary.light' : (isMyMessage ? 'primary.main' : 'grey.100'),
+                                                        color: isMyMessage ? 'white' : 'text.primary',
+                                                        transition: 'background-color 0.5s ease'
+                                                    }}
+                                                >
+                                                    {message.attachments && message.attachments.map((file, index) => (
+                                                        <Box key={index} sx={{ mb: 1 }}>
+                                                            {file.match(/\.(jpg|jpeg|png|gif)$/i) ? (
+                                                                <img src={`http://localhost:4444${file}`} alt="Вложение" style={{ maxWidth: '100%', borderRadius: 4 }} />
+                                                            ) : (
+                                                                <Chip label={file.split('/').pop()} onClick={() => window.open(`http://localhost:4444${file}`)} variant="outlined" />
+                                                            )}
+                                                        </Box>
+                                                    ))}
+                                                    {message.text && (
+                                                        <Typography variant="body1" sx={{ overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>{message.text}</Typography>
+                                                    )}
+                                                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mt: 1, ml: 2 }}>
+                                                        <Typography variant="caption" sx={{ opacity: 0.7, mr: 0.5 }}>
+                                                            {formatTime(message.createdAt)}
+                                                        </Typography>
+                                                        {renderMessageStatus(message)}
                                                     </Box>
-                                                ))}
-                                                {message.text && (
-                                                    <Typography variant="body1" sx={{ overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>{message.text}</Typography>
-                                                )}
-                                                <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mt: 1, ml: 2 }}>
-                                                    <Typography variant="caption" sx={{ opacity: 0.7, mr: 0.5 }}>
-                                                        {formatTime(message.createdAt)}
-                                                    </Typography>
-                                                    {renderMessageStatus(message)}
                                                 </Box>
                                             </Box>
-                                        </Box>
-                                    ))}
+                                        );
+                                    })}
                                     <div ref={messagesEndRef} />
                                 </Box>
-
                                 <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
                                     {selectedFiles.length > 0 && (
                                         <Box sx={{ mb: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
@@ -384,13 +374,7 @@ const Messages = () => {
                                         <IconButton onClick={() => fileInputRef.current.click()}>
                                             <AttachFileIcon />
                                         </IconButton>
-                                        <input
-                                            type="file"
-                                            multiple
-                                            ref={fileInputRef}
-                                            style={{ display: 'none' }}
-                                            onChange={handleFileSelect}
-                                        />
+                                        <input type="file" multiple ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileSelect} />
                                         <TextField
                                             fullWidth
                                             multiline
@@ -406,11 +390,7 @@ const Messages = () => {
                                                 }
                                             }}
                                         />
-                                        <IconButton
-                                            color="primary"
-                                            onClick={handleSendMessage}
-                                            disabled={!messageText.trim() && selectedFiles.length === 0}
-                                        >
+                                        <IconButton color="primary" onClick={handleSendMessage} disabled={!messageText.trim() && selectedFiles.length === 0}>
                                             <SendIcon />
                                         </IconButton>
                                     </Box>
@@ -418,15 +398,12 @@ const Messages = () => {
                             </>
                         ) : (
                             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                                <Typography color="textSecondary">
-                                    Выберите чат для начала общения
-                                </Typography>
+                                <Typography color="textSecondary">Выберите чат для начала общения</Typography>
                             </Box>
                         )}
                     </Paper>
                 </Grid>
             </Grid>
-
             <Dialog open={openNewChatDialog} onClose={() => setOpenNewChatDialog(false)} maxWidth="sm" fullWidth>
                 <DialogTitle>Новый чат</DialogTitle>
                 <DialogContent>
@@ -439,40 +416,21 @@ const Messages = () => {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         sx={{ mb: 2 }}
                         InputProps={{
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <SearchIcon />
-                                </InputAdornment>
-                            ),
+                            startAdornment: (<InputAdornment position="start"><SearchIcon /></InputAdornment>),
                         }}
                     />
-
                     <List sx={{ maxHeight: 300, overflow: 'auto' }}>
                         {subsStatus === 'loading' ? (
-                            <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
-                                <CircularProgress size={24} />
-                            </Box>
+                            <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}><CircularProgress size={24} /></Box>
                         ) : filteredSubscribers.length === 0 ? (
-                            <Typography color="textSecondary" sx={{ p: 2, textAlign: 'center' }}>
-                                {searchTerm ? 'Ничего не найдено' : 'Нет подписчиков'}
-                            </Typography>
+                            <Typography color="textSecondary" sx={{ p: 2, textAlign: 'center' }}>{searchTerm ? 'Ничего не найдено' : 'Нет подписчиков'}</Typography>
                         ) : (
                             filteredSubscribers.map((subscriber) => (
-                                <ListItemButton
-                                    key={subscriber._id}
-                                    onClick={() => handleCreateChat(subscriber._id)}
-                                    sx={{ borderRadius: 1, mb: 0.5 }}
-                                >
+                                <ListItemButton key={subscriber._id} onClick={() => handleCreateChat(subscriber._id)} sx={{ borderRadius: 1, mb: 0.5 }}>
                                     <ListItemAvatar>
-                                        <Avatar
-                                            src={subscriber.avatarUrl ? `http://localhost:4444${subscriber.avatarUrl}` : '/noavatar.png'}
-                                            alt={subscriber.fullName || 'User'}
-                                        />
+                                        <Avatar src={subscriber.avatarUrl ? `http://localhost:4444${subscriber.avatarUrl}` : '/noavatar.png'} alt={subscriber.fullName || 'User'} />
                                     </ListItemAvatar>
-                                    <ListItemText
-                                        primary={subscriber.fullName || 'Пользователь'}
-                                        secondary={subscriber.email}
-                                    />
+                                    <ListItemText primary={subscriber.fullName || 'Пользователь'} secondary={subscriber.email} />
                                 </ListItemButton>
                             ))
                         )}
