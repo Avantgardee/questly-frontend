@@ -7,11 +7,11 @@ import {
     DialogContent, DialogActions, ListItemButton, InputAdornment, CircularProgress, Badge,
     ImageList, ImageListItem, Card, CardMedia, CardContent, CardActionArea, Menu, MenuItem
 } from '@mui/material';
-import { Send as SendIcon, AttachFile as AttachFileIcon, Search as SearchIcon, Add as AddIcon, Done, DoneAll, Folder as FolderIcon, Download as DownloadIcon, Edit as EditIcon, MoreVert as MoreVertIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { Send as SendIcon, AttachFile as AttachFileIcon, Search as SearchIcon, Add as AddIcon, Done, DoneAll, Folder as FolderIcon, Download as DownloadIcon, Edit as EditIcon, MoreVert as MoreVertIcon, Delete as DeleteIcon, Reply as ReplyIcon, Close as CloseIcon, KeyboardArrowDown as KeyboardArrowDownIcon } from '@mui/icons-material';
 import {
     fetchChatMessages, fetchChats, createChat, uploadMessageFiles, addMessage,
     updateMessageStatus, setCurrentChat, fetchChatFiles, updateMessage, removeMessage,
-    updateChatUnreadCount
+    updateChatUnreadCount, removeChat, updateChat
 } from "../../redux/slices/messages";
 import { fetchGetSubs } from "../../redux/slices/subs";
 import { webSocketService } from "../../services/websocket";
@@ -36,8 +36,14 @@ const Messages = () => {
     const [contextMenu, setContextMenu] = useState(null);
     const [editingMessageId, setEditingMessageId] = useState(null);
     const [editingText, setEditingText] = useState('');
+    const [replyingTo, setReplyingTo] = useState(null);
+    const [showScrollButton, setShowScrollButton] = useState(false);
+    const [chatContextMenu, setChatContextMenu] = useState(null);
+    const [deleteMessageDialog, setDeleteMessageDialog] = useState(null);
+    const [deleteChatDialog, setDeleteChatDialog] = useState(null);
 
     const messagesEndRef = useRef(null);
+    const messagesContainerRef = useRef(null);
     const fileInputRef = useRef(null);
     const currentChatRef = useRef(currentChat);
     const userDataRef = useRef(userData);
@@ -118,20 +124,37 @@ const Messages = () => {
                     break;
                 case 'MESSAGE_DELETED': {
                     dispatch(removeMessage(message.data.messageId));
-                    // Обновляем список чатов, чтобы обновить lastMessage
+                    // Обновляем список чатов, чтобы обновить lastMessage и сохранить данные участников
                     if (message.data.chat || message.data.chatId) {
-                        // Если есть новое последнее сообщение, обновляем через addMessage
-                        if (message.data.chat?.lastMessage) {
-                            dispatch(addMessage({
-                                message: message.data.chat.lastMessage,
-                                chat: message.data.chat,
-                                currentUserId: currentUser?._id
-                            }));
+                        const chatId = message.data.chatId || message.data.chat?._id;
+                        if (message.data.chat) {
+                            // Если есть новое последнее сообщение, обновляем через addMessage
+                            if (message.data.chat.lastMessage) {
+                                dispatch(addMessage({
+                                    message: message.data.chat.lastMessage,
+                                    chat: message.data.chat,
+                                    currentUserId: currentUser?._id
+                                }));
+                            } else {
+                                // Если последнего сообщения нет, обновляем чат напрямую, сохраняя данные участников
+                                dispatch(updateChat({
+                                    chatId: chatId,
+                                    chatData: {
+                                        participants: message.data.chat.participants,
+                                        lastMessage: null,
+                                        unreadCount: message.data.chat.unreadCount?.[currentUser?._id] || 0
+                                    }
+                                }));
+                            }
                         } else {
-                            // Если последнего сообщения нет или нет информации о чате, обновляем список
+                            // Если нет информации о чате, обновляем список
                             dispatch(fetchChats());
                         }
                     }
+                    break;
+                }
+                case 'CHAT_DELETED': {
+                    dispatch(removeChat(message.data.chatId));
                     break;
                 }
                 default:
@@ -183,28 +206,55 @@ const Messages = () => {
         
         // Если вернулись на страницу сообщений (например, через историю браузера)
         if (currentPath === '/messages' && previousPath !== currentPath && currentChat?._id && isAuth && userData?._id) {
-            // Перезагружаем сообщения для открытого чата
-            dispatch(fetchChatMessages(currentChat._id));
-            lastLoadedChatRef.current = currentChat._id;
+            // Проверяем, существует ли чат в списке (мог быть удален пока пользователь был на другой странице)
+            if (chatsStatus === 'succeeded') {
+                const chatExists = chats.some(c => c._id === currentChat._id);
+                if (!chatExists) {
+                    // Чат был удален, очищаем currentChat
+                    dispatch(setCurrentChat(null));
+                    lastLoadedChatRef.current = null;
+                } else {
+                    // Перезагружаем сообщения для открытого чата
+                    dispatch(fetchChatMessages(currentChat._id));
+                    lastLoadedChatRef.current = currentChat._id;
+                }
+            } else {
+                // Если список чатов еще не загружен, загружаем его сначала
+                dispatch(fetchChats());
+            }
         }
         
         locationRef.current = currentPath;
-    }, [location.pathname, currentChat?._id, isAuth, userData?._id, dispatch]);
+    }, [location.pathname, currentChat?._id, isAuth, userData?._id, dispatch, chatsStatus, chats]);
     
     // Обрабатываем событие popstate (навигация через историю браузера)
     useEffect(() => {
         const handlePopState = () => {
-            // При возврате через историю браузера перезагружаем сообщения для открытого чата
+            // При возврате через историю браузера проверяем существование чата и перезагружаем сообщения
             if (currentChat?._id && isAuth && userData?._id && location.pathname === '/messages') {
                 setTimeout(() => {
-                    dispatch(fetchChatMessages(currentChat._id)).then(() => {
-                        // После загрузки сообщений отмечаем чат как прочитанный
-                        if (currentChat.unreadCount > 0) {
-                            webSocketService.markChatAsRead(currentChat._id);
-                            dispatch(fetchChats());
+                    // Проверяем, существует ли чат в списке (мог быть удален пока пользователь был на другой странице)
+                    if (chatsStatus === 'succeeded') {
+                        const chatExists = chats.some(c => c._id === currentChat._id);
+                        if (!chatExists) {
+                            // Чат был удален, очищаем currentChat
+                            dispatch(setCurrentChat(null));
+                            lastLoadedChatRef.current = null;
+                        } else {
+                            // Перезагружаем сообщения для открытого чата
+                            dispatch(fetchChatMessages(currentChat._id)).then(() => {
+                                // После загрузки сообщений отмечаем чат как прочитанный
+                                if (currentChat.unreadCount > 0) {
+                                    webSocketService.markChatAsRead(currentChat._id);
+                                    dispatch(fetchChats());
+                                }
+                            });
+                            lastLoadedChatRef.current = currentChat._id;
                         }
-                    });
-                    lastLoadedChatRef.current = currentChat._id;
+                    } else {
+                        // Если список чатов еще не загружен, загружаем его сначала
+                        dispatch(fetchChats());
+                    }
                 }, 100);
             }
         };
@@ -214,36 +264,62 @@ const Messages = () => {
         return () => {
             window.removeEventListener('popstate', handlePopState);
         };
-    }, [currentChat?._id, currentChat?.unreadCount, isAuth, userData?._id, location.pathname, dispatch]);
+    }, [currentChat?._id, currentChat?.unreadCount, isAuth, userData?._id, location.pathname, dispatch, chatsStatus, chats]);
     
     // Отслеживаем видимость страницы и focus для перезагрузки при возврате
     useEffect(() => {
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible' && currentChat?._id && isAuth && userData?._id) {
-                // При возврате на страницу перезагружаем сообщения
-                dispatch(fetchChatMessages(currentChat._id)).then(() => {
-                    // После загрузки сообщений отмечаем их как прочитанные
-                    // и обновляем unreadCount
-                    if (currentChat.unreadCount > 0) {
-                        webSocketService.markChatAsRead(currentChat._id);
-                        dispatch(fetchChats());
+                // Проверяем, существует ли чат в списке (мог быть удален пока пользователь был на другой странице)
+                if (chatsStatus === 'succeeded') {
+                    const chatExists = chats.some(c => c._id === currentChat._id);
+                    if (!chatExists) {
+                        // Чат был удален, очищаем currentChat
+                        dispatch(setCurrentChat(null));
+                        lastLoadedChatRef.current = null;
+                    } else {
+                        // При возврате на страницу перезагружаем сообщения
+                        dispatch(fetchChatMessages(currentChat._id)).then(() => {
+                            // После загрузки сообщений отмечаем их как прочитанные
+                            // и обновляем unreadCount
+                            if (currentChat.unreadCount > 0) {
+                                webSocketService.markChatAsRead(currentChat._id);
+                                dispatch(fetchChats());
+                            }
+                        });
+                        lastLoadedChatRef.current = currentChat._id;
                     }
-                });
-                lastLoadedChatRef.current = currentChat._id;
+                } else {
+                    // Если список чатов еще не загружен, загружаем его сначала
+                    dispatch(fetchChats());
+                }
             }
         };
         
         const handleFocus = () => {
             if (currentChat?._id && isAuth && userData?._id) {
-                // При возврате фокуса на окно перезагружаем сообщения
-                dispatch(fetchChatMessages(currentChat._id)).then(() => {
-                    // После загрузки сообщений отмечаем их как прочитанные
-                    if (currentChat.unreadCount > 0) {
-                        webSocketService.markChatAsRead(currentChat._id);
-                        dispatch(fetchChats());
+                // Проверяем, существует ли чат в списке (мог быть удален пока пользователь был на другой странице)
+                if (chatsStatus === 'succeeded') {
+                    const chatExists = chats.some(c => c._id === currentChat._id);
+                    if (!chatExists) {
+                        // Чат был удален, очищаем currentChat
+                        dispatch(setCurrentChat(null));
+                        lastLoadedChatRef.current = null;
+                    } else {
+                        // При возврате фокуса на окно перезагружаем сообщения
+                        dispatch(fetchChatMessages(currentChat._id)).then(() => {
+                            // После загрузки сообщений отмечаем их как прочитанные
+                            if (currentChat.unreadCount > 0) {
+                                webSocketService.markChatAsRead(currentChat._id);
+                                dispatch(fetchChats());
+                            }
+                        });
+                        lastLoadedChatRef.current = currentChat._id;
                     }
-                });
-                lastLoadedChatRef.current = currentChat._id;
+                } else {
+                    // Если список чатов еще не загружен, загружаем его сначала
+                    dispatch(fetchChats());
+                }
             }
         };
         
@@ -254,7 +330,7 @@ const Messages = () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('focus', handleFocus);
         };
-    }, [currentChat?._id, currentChat?.unreadCount, isAuth, userData?._id, dispatch]);
+    }, [currentChat?._id, currentChat?.unreadCount, isAuth, userData?._id, dispatch, chatsStatus, chats]);
     
     useEffect(() => {
         if (currentChat?._id && isAuth && userData?._id) {
@@ -297,7 +373,11 @@ const Messages = () => {
         if (chatsStatus === 'succeeded' && currentChat?._id && isAuth && userData?._id) {
             // Проверяем, что чат все еще существует в списке
             const chatExists = chats.some(c => c._id === currentChat._id);
-            if (chatExists && lastLoadedChatRef.current !== currentChat._id) {
+            if (!chatExists) {
+                // Чат был удален, очищаем currentChat
+                dispatch(setCurrentChat(null));
+                lastLoadedChatRef.current = null;
+            } else if (chatExists && lastLoadedChatRef.current !== currentChat._id) {
                 // Перезагружаем сообщения, если они еще не загружены
                 const chat = chats.find(c => c._id === currentChat._id);
                 dispatch(fetchChatMessages(currentChat._id)).then(() => {
@@ -324,8 +404,22 @@ const Messages = () => {
             }
         } else if (!highlightedMessage) {
             scrollToBottom();
+            // После прокрутки проверяем позицию
+            setTimeout(() => {
+                handleScroll();
+            }, 100);
         }
     }, [highlightedMessage, messages, navigate]);
+
+    // Проверяем позицию скролла при изменении сообщений
+    useEffect(() => {
+        if (messagesContainerRef.current) {
+            // Небольшая задержка для того, чтобы DOM обновился
+            setTimeout(() => {
+                handleScroll();
+            }, 50);
+        }
+    }, [messages]);
 
     useEffect(() => {
         if (currentChat && messages.length > 0 && userData) {
@@ -336,6 +430,23 @@ const Messages = () => {
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    };
+
+    const handleScroll = () => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+        
+        const { scrollTop, scrollHeight, clientHeight } = container;
+        const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+        // Показываем кнопку только если пользователь проскроллил вверх (не внизу)
+        // и есть контент выше (scrollTop > 0)
+        const shouldShow = distanceFromBottom > 100 && scrollTop > 0;
+        
+        setShowScrollButton(shouldShow);
+    };
+
+    const handleScrollToBottom = () => {
+        scrollToBottom();
     };
 
     const markVisibleMessagesAsRead = () => {
@@ -376,14 +487,25 @@ const Messages = () => {
             data: {
                 chatId: currentChat._id,
                 text: messageText,
-                attachments
+                attachments,
+                replyTo: replyingTo?._id || null
             }
         });
         setMessageText('');
         setSelectedFiles([]);
+        setReplyingTo(null);
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
+    };
+
+    const handleReplyToMessage = (message) => {
+        setReplyingTo(message);
+        handleCloseContextMenu();
+    };
+
+    const handleCancelReply = () => {
+        setReplyingTo(null);
     };
 
     const handleFileSelect = (event) => {
@@ -425,13 +547,12 @@ const Messages = () => {
 
     const handleMessageContextMenu = (event, message) => {
         event.preventDefault();
-        if (message.sender._id === userData._id) {
-            setContextMenu({
-                mouseX: event.clientX - 2,
-                mouseY: event.clientY - 4,
-                message: message
-            });
-        }
+        // Показываем контекстное меню для всех сообщений
+        setContextMenu({
+            mouseX: event.clientX - 2,
+            mouseY: event.clientY - 4,
+            message: message
+        });
     };
 
     const handleCloseContextMenu = () => {
@@ -465,10 +586,49 @@ const Messages = () => {
     };
 
     const handleDeleteMessage = (message) => {
-        if (window.confirm('Вы уверены, что хотите удалить это сообщение?')) {
-            webSocketService.deleteMessage(message._id);
-            handleCloseContextMenu();
+        setDeleteMessageDialog(message);
+        handleCloseContextMenu();
+    };
+
+    const handleConfirmDeleteMessage = () => {
+        if (deleteMessageDialog) {
+            webSocketService.deleteMessage(deleteMessageDialog._id);
+            setDeleteMessageDialog(null);
         }
+    };
+
+    const handleCancelDeleteMessage = () => {
+        setDeleteMessageDialog(null);
+    };
+
+    const handleChatContextMenu = (event, chat) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setChatContextMenu({
+            mouseX: event.clientX - 2,
+            mouseY: event.clientY - 4,
+            chat: chat
+        });
+    };
+
+    const handleCloseChatContextMenu = () => {
+        setChatContextMenu(null);
+    };
+
+    const handleDeleteChat = (chat) => {
+        setDeleteChatDialog(chat);
+        handleCloseChatContextMenu();
+    };
+
+    const handleConfirmDeleteChat = () => {
+        if (deleteChatDialog) {
+            webSocketService.deleteChat(deleteChatDialog._id);
+            setDeleteChatDialog(null);
+        }
+    };
+
+    const handleCancelDeleteChat = () => {
+        setDeleteChatDialog(null);
     };
 
     const formatTime = (dateString) => {
@@ -478,7 +638,11 @@ const Messages = () => {
 
     const getOtherParticipant = (chat) => {
         if (!userData || !chat.participants) return null;
-        return chat.participants.find(p => p._id !== userData._id);
+        // Обрабатываем случай, когда participants могут быть ObjectId или объектами
+        return chat.participants.find(p => {
+            const participantId = p._id || p.toString();
+            return participantId !== userData._id;
+        });
     };
 
     const getLastMessagePreview = (chat) => {
@@ -537,6 +701,7 @@ const Messages = () => {
                                         button
                                         selected={currentChat?._id === chat._id}
                                         onClick={() => handleChatSelect(chat)}
+                                        onContextMenu={(e) => handleChatContextMenu(e, chat)}
                                         sx={{ mb: 1, borderRadius: 2 }}
                                         secondaryAction={
                                             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
@@ -569,7 +734,7 @@ const Messages = () => {
                     </Paper>
                 </Grid>
                 <Grid item xs={12} md={8}>
-                    <Paper sx={{ p: 2, height: '80vh', display: 'flex', flexDirection: 'column' }}>
+                    <Paper sx={{ p: 2, height: '80vh', display: 'flex', flexDirection: 'column', position: 'relative' }}>
                         {currentChat ? (
                             <>
                                 <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -583,7 +748,11 @@ const Messages = () => {
                                         Файлы
                                     </Button>
                                 </Box>
-                                <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                                <Box 
+                                    ref={messagesContainerRef}
+                                    sx={{ flex: 1, overflow: 'auto', p: 2 }}
+                                    onScroll={handleScroll}
+                                >
                                     {messages.map((message) => {
                                         const isMyMessage = message.sender._id === userData._id;
                                         const isHighlighted = highlightedMessage === message._id;
@@ -664,6 +833,36 @@ const Messages = () => {
                                                         </Box>
                                                     ) : (
                                                         <>
+                                                            {message.replyTo && (
+                                                                <Box sx={{ 
+                                                                    mb: 1, 
+                                                                    p: 1, 
+                                                                    bgcolor: isMyMessage ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.05)', 
+                                                                    borderRadius: 1,
+                                                                    borderLeft: `3px solid ${isMyMessage ? 'rgba(255, 255, 255, 0.5)' : 'primary.main'}`,
+                                                                    maxWidth: '100%'
+                                                                }}>
+                                                                    <Typography variant="caption" sx={{ 
+                                                                        fontWeight: 'bold', 
+                                                                        color: isMyMessage ? 'rgba(255, 255, 255, 0.9)' : 'primary.main',
+                                                                        display: 'block',
+                                                                        mb: 0.5
+                                                                    }}>
+                                                                        {message.replyTo.sender?.fullName || 'Пользователь'}
+                                                                    </Typography>
+                                                                    <Typography 
+                                                                        variant="body2" 
+                                                                        sx={{ 
+                                                                            overflow: 'hidden', 
+                                                                            textOverflow: 'ellipsis', 
+                                                                            whiteSpace: 'nowrap',
+                                                                            color: isMyMessage ? 'rgba(255, 255, 255, 0.8)' : 'text.secondary'
+                                                                        }}
+                                                                    >
+                                                                        {message.replyTo.text || '📎 Вложение'}
+                                                                    </Typography>
+                                                                </Box>
+                                                            )}
                                                             {message.text && (
                                                                 <Typography variant="body1" sx={{ overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>
                                                                     {message.text}
@@ -688,7 +887,61 @@ const Messages = () => {
                                     })}
                                     <div ref={messagesEndRef} />
                                 </Box>
+                                {showScrollButton && (
+                                    <IconButton
+                                        onClick={handleScrollToBottom}
+                                        sx={{
+                                            position: 'absolute',
+                                            bottom: 100,
+                                            right: 24,
+                                            bgcolor: 'grey.700',
+                                            color: 'white',
+                                            boxShadow: 4,
+                                            width: 48,
+                                            height: 48,
+                                            '&:hover': {
+                                                bgcolor: 'grey.800',
+                                            },
+                                            zIndex: 1000,
+                                            transition: 'all 0.3s ease'
+                                        }}
+                                    >
+                                        <KeyboardArrowDownIcon />
+                                    </IconButton>
+                                )}
                                 <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+                                    {replyingTo && (
+                                        <Box sx={{ 
+                                            mb: 1, 
+                                            p: 1, 
+                                            bgcolor: 'action.hover', 
+                                            borderRadius: 1, 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: 1 
+                                        }}>
+                                            <ReplyIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+                                            <Box sx={{ flex: 1, minWidth: 0 }}>
+                                                <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 'bold' }}>
+                                                    В ответ {replyingTo.sender?.fullName || 'Пользователь'}
+                                                </Typography>
+                                                <Typography 
+                                                    variant="body2" 
+                                                    sx={{ 
+                                                        overflow: 'hidden', 
+                                                        textOverflow: 'ellipsis', 
+                                                        whiteSpace: 'nowrap',
+                                                        color: 'text.secondary'
+                                                    }}
+                                                >
+                                                    {replyingTo.text || '📎 Вложение'}
+                                                </Typography>
+                                            </Box>
+                                            <IconButton size="small" onClick={handleCancelReply}>
+                                                <CloseIcon fontSize="small" />
+                                            </IconButton>
+                                        </Box>
+                                    )}
                                     {selectedFiles.length > 0 && (
                                         <Box sx={{ mb: 1, display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                                             {selectedFiles.map((file, i) => (
@@ -706,7 +959,7 @@ const Messages = () => {
                                             multiline
                                             maxRows={4}
                                             variant="outlined"
-                                            placeholder="Введите сообщение..."
+                                            placeholder={replyingTo ? "Введите ответ..." : "Введите сообщение..."}
                                             value={messageText}
                                             onChange={(e) => setMessageText(e.target.value)}
                                             onKeyPress={(e) => {
@@ -902,6 +1155,12 @@ const Messages = () => {
                         : undefined
                 }
             >
+                {contextMenu && (
+                    <MenuItem onClick={() => handleReplyToMessage(contextMenu.message)}>
+                        <ReplyIcon sx={{ mr: 1, fontSize: 20 }} />
+                        Ответить
+                    </MenuItem>
+                )}
                 {contextMenu && canEditMessage(contextMenu.message) && (
                     <MenuItem onClick={() => handleStartEdit(contextMenu.message)}>
                         <EditIcon sx={{ mr: 1, fontSize: 20 }} />
@@ -915,6 +1174,69 @@ const Messages = () => {
                     </MenuItem>
                 )}
             </Menu>
+            <Menu
+                open={chatContextMenu !== null}
+                onClose={handleCloseChatContextMenu}
+                anchorReference="anchorPosition"
+                anchorPosition={
+                    chatContextMenu !== null
+                        ? { top: chatContextMenu.mouseY, left: chatContextMenu.mouseX }
+                        : undefined
+                }
+            >
+                {chatContextMenu && (
+                    <MenuItem onClick={() => handleDeleteChat(chatContextMenu.chat)} sx={{ color: 'error.main' }}>
+                        <DeleteIcon sx={{ mr: 1, fontSize: 20 }} />
+                        Удалить чат
+                    </MenuItem>
+                )}
+            </Menu>
+            <Dialog
+                open={deleteMessageDialog !== null}
+                onClose={handleCancelDeleteMessage}
+                aria-labelledby="delete-message-dialog-title"
+                aria-describedby="delete-message-dialog-description"
+            >
+                <DialogTitle id="delete-message-dialog-title">
+                    Удаление сообщения
+                </DialogTitle>
+                <DialogContent>
+                    <Typography id="delete-message-dialog-description">
+                        Вы уверены, что хотите удалить это сообщение? Это действие нельзя отменить.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCancelDeleteMessage} color="inherit">
+                        Отмена
+                    </Button>
+                    <Button onClick={handleConfirmDeleteMessage} color="error" variant="contained" autoFocus>
+                        Удалить
+                    </Button>
+                </DialogActions>
+            </Dialog>
+            <Dialog
+                open={deleteChatDialog !== null}
+                onClose={handleCancelDeleteChat}
+                aria-labelledby="delete-chat-dialog-title"
+                aria-describedby="delete-chat-dialog-description"
+            >
+                <DialogTitle id="delete-chat-dialog-title">
+                    Удаление чата
+                </DialogTitle>
+                <DialogContent>
+                    <Typography id="delete-chat-dialog-description">
+                        Вы уверены, что хотите удалить этот чат? Все сообщения будут удалены без возможности восстановления. Это действие нельзя отменить.
+                    </Typography>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={handleCancelDeleteChat} color="inherit">
+                        Отмена
+                    </Button>
+                    <Button onClick={handleConfirmDeleteChat} color="error" variant="contained" autoFocus>
+                        Удалить
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </Container>
     );
 };

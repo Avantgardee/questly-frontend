@@ -133,12 +133,21 @@ const messagesSlice = createSlice({
                 const existingChat = state.chats[chatIndex];
                 existingChat.lastMessage = newMessage;
 
+                // Обновляем данные участников, если они пришли в updatedChatData
+                if (updatedChatData && updatedChatData.participants) {
+                    existingChat.participants = updatedChatData.participants;
+                }
+
                 if (state.currentChat?._id !== newMessage.chat) {
                     if (updatedChatData && updatedChatData.unreadCount && currentUserId) {
                         existingChat.unreadCount = updatedChatData.unreadCount[currentUserId] || 0;
                     }
                 } else {
                     existingChat.unreadCount = 0;
+                    // Обновляем currentChat, если это тот же чат
+                    if (updatedChatData && updatedChatData.participants) {
+                        state.currentChat.participants = updatedChatData.participants;
+                    }
                 }
 
                 state.chats.splice(chatIndex, 1);
@@ -175,13 +184,18 @@ const messagesSlice = createSlice({
                 state.messages = [];
             }
             
-            state.currentChat = action.payload;
-
-            if (action.payload) {
-                const chatInList = state.chats.find(c => c._id === action.payload._id);
-                if (chatInList) {
-                    chatInList.unreadCount = 0;
-                }
+            // Используем данные из списка чатов, если они есть (более актуальные)
+            const chatInList = state.chats.find(c => c._id === action.payload?._id);
+            if (chatInList) {
+                // Объединяем данные из action.payload с данными из списка (приоритет списку)
+                state.currentChat = {
+                    ...action.payload,
+                    ...chatInList,
+                    participants: chatInList.participants || action.payload.participants
+                };
+                chatInList.unreadCount = 0;
+            } else {
+                state.currentChat = action.payload;
             }
         },
         removeMessage: (state, action) => {
@@ -220,6 +234,34 @@ const messagesSlice = createSlice({
             // Также обновляем currentChat, если это текущий чат
             if (state.currentChat?._id === chatId) {
                 state.currentChat.unreadCount = unreadCount;
+            }
+        },
+        updateChat: (state, action) => {
+            const { chatId, chatData } = action.payload;
+            const chatIndex = state.chats.findIndex(chat => chat._id === chatId);
+            if (chatIndex !== -1) {
+                // Обновляем данные чата, сохраняя существующие данные участников, если новые не пришли
+                if (chatData.participants) {
+                    state.chats[chatIndex].participants = chatData.participants;
+                }
+                if (chatData.lastMessage !== undefined) {
+                    state.chats[chatIndex].lastMessage = chatData.lastMessage;
+                }
+                if (chatData.unreadCount !== undefined) {
+                    state.chats[chatIndex].unreadCount = chatData.unreadCount;
+                }
+            }
+            // Также обновляем currentChat, если это текущий чат
+            if (state.currentChat?._id === chatId) {
+                if (chatData.participants) {
+                    state.currentChat.participants = chatData.participants;
+                }
+                if (chatData.lastMessage !== undefined) {
+                    state.currentChat.lastMessage = chatData.lastMessage;
+                }
+                if (chatData.unreadCount !== undefined) {
+                    state.currentChat.unreadCount = chatData.unreadCount;
+                }
             }
         },
         clearError: (state) => {
@@ -301,6 +343,6 @@ const messagesSlice = createSlice({
 
 export const {
     setCurrentChat, addMessage, updateMessageStatus, clearError, removeMessage,
-    updateMessage, removeChat, updateChatUnreadCount
+    updateMessage, removeChat, updateChatUnreadCount, updateChat
 } = messagesSlice.actions;
 export default messagesSlice.reducer;

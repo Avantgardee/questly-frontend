@@ -181,6 +181,13 @@ class WebSocketService {
             data: { messageId }
         });
     }
+
+    deleteChat(chatId) {
+        return this.sendMessage({
+            type: 'DELETE_CHAT',
+            data: { chatId }
+        });
+    }
 }
 
 export const webSocketService = new WebSocketService();
