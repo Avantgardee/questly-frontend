@@ -1,10 +1,12 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import axios from "../../axios";
 
-export const fetchGetSubs = createAsyncThunk('subs/fetchGetSubs', async (params, { rejectWithValue }) => {
+export const fetchGetSubs = createAsyncThunk('subs/fetchGetSubs', async ({ id, group, page = 1, limit = 10, search = '', append = false }, { rejectWithValue }) => {
     try {
-        const { data } = await axios.get(`/profile/${params.id}/${params.group}`);
-        return data;
+        const { data } = await axios.get(`/profile/${id}/${group}`, { 
+            params: { page, limit, search } 
+        });
+        return { ...data, append };
     } catch (error) {
         return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки подписчиков');
     }
@@ -19,10 +21,12 @@ export const fetchGetSubscriptions = createAsyncThunk('subs/fetchGetSubscription
     }
 });
 
-export const fetchGetAllUser = createAsyncThunk('subs/fetchGetAllUser', async (_, { rejectWithValue }) => {
+export const fetchGetAllUser = createAsyncThunk('subs/fetchGetAllUser', async ({ page = 1, limit = 10, search = '', append = false }, { rejectWithValue }) => {
     try {
-        const { data } = await axios.get(`/users`);
-        return data;
+        const { data } = await axios.get(`/users`, { 
+            params: { page, limit, search } 
+        });
+        return { ...data, append };
     } catch (error) {
         return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки пользователей');
     }
@@ -32,33 +36,52 @@ const initialState = {
     items: [],
     filteredItems: [],
     status: 'loading',
+    pagination: {
+        page: 1,
+        limit: 10,
+        total: 0,
+        pages: 0,
+        hasMore: false
+    },
+    loadingMore: false,
+    searchQuery: ''
 };
 
 const subsSlice = createSlice({
     name: 'subs',
     initialState,
     reducers: {
-        filterSubs: (state, action) => {
-            state.filteredItems = state.items.filter(user =>
-                user.fullName.toLowerCase().includes(action.payload.toLowerCase()) ||
-                user.email.toLowerCase().includes(action.payload.toLowerCase())
-            );
+        setSearchQuery: (state, action) => {
+            state.searchQuery = action.payload;
         },
         resetFilter: (state) => {
             state.filteredItems = state.items;
+            state.searchQuery = '';
         }
     },
     extraReducers: {
-        [fetchGetSubs.pending]: (state) => {
-            state.status = 'loading';
+        [fetchGetSubs.pending]: (state, action) => {
+            if (action.meta.arg.append) {
+                state.loadingMore = true;
+            } else {
+                state.status = 'loading';
+            }
         },
         [fetchGetSubs.fulfilled]: (state, action) => {
             state.status = 'loaded';
-            state.items = action.payload;
-            state.filteredItems = action.payload;
+            state.loadingMore = false;
+            if (action.payload.append) {
+                state.items = [...state.items, ...action.payload.users];
+                state.filteredItems = [...state.filteredItems, ...action.payload.users];
+            } else {
+                state.items = action.payload.users;
+                state.filteredItems = action.payload.users;
+            }
+            state.pagination = action.payload.pagination;
         },
         [fetchGetSubs.rejected]: (state) => {
             state.status = 'error';
+            state.loadingMore = false;
             state.items = [];
             state.filteredItems = [];
         },
@@ -75,21 +98,33 @@ const subsSlice = createSlice({
             state.items = [];
             state.filteredItems = [];
         },
-        [fetchGetAllUser.pending]: (state) => {
-            state.status = 'loading';
+        [fetchGetAllUser.pending]: (state, action) => {
+            if (action.meta.arg.append) {
+                state.loadingMore = true;
+            } else {
+                state.status = 'loading';
+            }
         },
         [fetchGetAllUser.fulfilled]: (state, action) => {
             state.status = 'loaded';
-            state.items = action.payload;
-            state.filteredItems = action.payload;
+            state.loadingMore = false;
+            if (action.payload.append) {
+                state.items = [...state.items, ...action.payload.users];
+                state.filteredItems = [...state.filteredItems, ...action.payload.users];
+            } else {
+                state.items = action.payload.users;
+                state.filteredItems = action.payload.users;
+            }
+            state.pagination = action.payload.pagination;
         },
         [fetchGetAllUser.rejected]: (state) => {
             state.status = 'error';
+            state.loadingMore = false;
             state.items = [];
             state.filteredItems = [];
         },
     }
 });
 
-export const { filterSubs, resetFilter } = subsSlice.actions;
+export const { setSearchQuery, resetFilter } = subsSlice.actions;
 export const subsReducer = subsSlice.reducer;

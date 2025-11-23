@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Grid from '@mui/material/Grid';
 import { useDispatch, useSelector } from "react-redux";
 import { Post } from '../components/Post';
@@ -16,7 +16,8 @@ import {
   ToggleButton,
   Stack,
   Container,
-  Divider
+  Divider,
+  CircularProgress
 } from "@mui/material";
 import SortIcon from '@mui/icons-material/Sort';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -37,55 +38,203 @@ export const Home = () => {
     const timeZone = 'Europe/Moscow';
     const isTagsLoading = tags.status === 'loading';
     const isPostsLoading = posts.status === 'loading';
+    const isLoadingMore = posts.loadingMore;
+    const hasMore = posts.pagination?.hasMore || false;
+    const observerTarget = useRef(null);
+    const currentPageRef = useRef(1);
 
     useEffect(() => {
-        dispatch(fetchPosts());
+        currentPageRef.current = 1;
+        dispatch(fetchPostsWithFilter({ 
+            filter: 'createdAt', 
+            direction: 'desc', 
+            search: '', 
+            page: 1, 
+            limit: 10, 
+            append: false 
+        }));
         dispatch(fetchTags());
         dispatch(fetchAuthMe());
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [dispatch]);
+
+    // Cleanup для таймера поиска
+    useEffect(() => {
+        return () => {
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
+        };
+    }, []);
 
     const [checked, setChecked] = useState(true);
     const [activeTab, setActiveTab] = useState('createdAt');
     const [searchQuery, setSearchQuery] = useState('');
     const [filterBySubs, setFilterBySubs] = useState(false);
+    const searchTimeoutRef = useRef(null);
 
-    const fetchPostsData = async (filterValue, direction, search, subs) => {
+    const fetchPostsData = async (filterValue, direction, search, subs, page = 1, append = false) => {
+        currentPageRef.current = page;
         if (subs) {
             await dispatch(fetchPostsWithFilterAndSubs({
                 filter: filterValue,
                 direction: direction ? 'desc' : 'asc',
                 search: search,
+                page,
+                limit: 10,
+                append
             }));
         } else {
             await dispatch(fetchPostsWithFilter({
                 filter: filterValue,
                 direction: direction ? 'desc' : 'asc',
                 search: search,
+                page,
+                limit: 10,
+                append
             }));
         }
     };
 
-    const handleSearchChange = async (event) => {
+    const loadMorePosts = useCallback(() => {
+        if (!isLoadingMore && hasMore) {
+            const nextPage = currentPageRef.current + 1;
+            fetchPostsData(activeTab, checked, searchQuery, filterBySubs, nextPage, true);
+        }
+    }, [isLoadingMore, hasMore, activeTab, checked, searchQuery, filterBySubs]);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            entries => {
+                if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+                    loadMorePosts();
+                }
+            },
+            { threshold: 0.1 }
+        );
+
+        const currentTarget = observerTarget.current;
+        if (currentTarget) {
+            observer.observe(currentTarget);
+        }
+
+        return () => {
+            if (currentTarget) {
+                observer.unobserve(currentTarget);
+            }
+        };
+    }, [loadMorePosts, hasMore, isLoadingMore]);
+
+    const handleSearchChange = (event) => {
         const searchNow = event.target.value;
         setSearchQuery(searchNow);
-        await fetchPostsData(activeTab, checked, searchNow, filterBySubs);
+        currentPageRef.current = 1;
+        
+        // Очищаем предыдущий таймер
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+        
+        // Устанавливаем новый таймер для debounce (500ms)
+        searchTimeoutRef.current = setTimeout(async () => {
+            // Используем актуальные значения напрямую
+            if (filterBySubs) {
+                await dispatch(fetchPostsWithFilterAndSubs({
+                    filter: activeTab,
+                    direction: checked ? 'desc' : 'asc',
+                    search: searchNow,
+                    page: 1,
+                    limit: 10,
+                    append: false
+                }));
+            } else {
+                await dispatch(fetchPostsWithFilter({
+                    filter: activeTab,
+                    direction: checked ? 'desc' : 'asc',
+                    search: searchNow,
+                    page: 1,
+                    limit: 10,
+                    append: false
+                }));
+            }
+        }, 500);
     };
 
     const handleChange = async (event) => {
         const newChecked = event.target.checked;
-        await setChecked(newChecked);
-        await fetchPostsData(activeTab, newChecked, searchQuery, filterBySubs);
+        setChecked(newChecked);
+        currentPageRef.current = 1;
+        // Используем актуальные значения напрямую
+        if (filterBySubs) {
+            await dispatch(fetchPostsWithFilterAndSubs({
+                filter: activeTab,
+                direction: newChecked ? 'desc' : 'asc',
+                search: searchQuery,
+                page: 1,
+                limit: 10,
+                append: false
+            }));
+        } else {
+            await dispatch(fetchPostsWithFilter({
+                filter: activeTab,
+                direction: newChecked ? 'desc' : 'asc',
+                search: searchQuery,
+                page: 1,
+                limit: 10,
+                append: false
+            }));
+        }
     };
 
     const handleTabChange = async (filterValue, direction, search, subs) => {
         setActiveTab(filterValue);
-        await fetchPostsData(filterValue, direction, search, subs);
+        currentPageRef.current = 1;
+        // Используем актуальные значения напрямую
+        if (subs) {
+            await dispatch(fetchPostsWithFilterAndSubs({
+                filter: filterValue,
+                direction: direction ? 'desc' : 'asc',
+                search: search || '',
+                page: 1,
+                limit: 10,
+                append: false
+            }));
+        } else {
+            await dispatch(fetchPostsWithFilter({
+                filter: filterValue,
+                direction: direction ? 'desc' : 'asc',
+                search: search || '',
+                page: 1,
+                limit: 10,
+                append: false
+            }));
+        }
     };
 
     const handleFilterBySubsChange = async (event) => {
         const newValue = event.target.checked;
         setFilterBySubs(newValue);
-        await fetchPostsData(activeTab, checked, searchQuery, newValue);
+        currentPageRef.current = 1;
+        // Используем актуальные значения напрямую
+        if (newValue) {
+            await dispatch(fetchPostsWithFilterAndSubs({
+                filter: activeTab,
+                direction: checked ? 'desc' : 'asc',
+                search: searchQuery,
+                page: 1,
+                limit: 10,
+                append: false
+            }));
+        } else {
+            await dispatch(fetchPostsWithFilter({
+                filter: activeTab,
+                direction: checked ? 'desc' : 'asc',
+                search: searchQuery,
+                page: 1,
+                limit: 10,
+                append: false
+            }));
+        }
     };
 
     return (
@@ -246,6 +395,12 @@ export const Home = () => {
                             </Typography>
                         </Paper>
                     )}
+                    {isLoadingMore && (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
+                            <CircularProgress />
+                        </Box>
+                    )}
+                    <div ref={observerTarget} style={{ height: '20px' }} />
                 </Grid>
                 
                 <Grid item xs={12} md={4}>

@@ -2,30 +2,49 @@ import {createAsyncThunk, createSlice} from '@reduxjs/toolkit'
 import axios from "../../axios";
 
 
-export const fetchPosts = createAsyncThunk('posts/fetchPosts',async () => {
-const { data } = await axios.get('/posts')
-    return data;
+export const fetchPosts = createAsyncThunk('posts/fetchPosts',async ({ page = 1, limit = 10, append = false }, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.get('/posts', { params: { page, limit } });
+        return { ...data, append };
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки постов');
+    }
 })
 
-export const fetchPostsWithUser = createAsyncThunk('posts/fetchPostsWithUser',async (user) => {
-    const { data } = await axios.get(`/posts/user/${user}`)
-    return data;
+export const fetchPostsWithUser = createAsyncThunk('posts/fetchPostsWithUser',async ({ user, page = 1, limit = 10, append = false }, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.get(`/posts/user/${user}`, { params: { page, limit } });
+        return { ...data, append };
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки постов');
+    }
 })
 
-export const fetchPostsWithTag = createAsyncThunk('posts/fetchPosts',async (tag) => {
-    const { data } = await axios.get(`/tags/${tag}`)
-    return data;
+export const fetchPostsWithTag = createAsyncThunk('posts/fetchPostsWithTag',async ({ tag, page = 1, limit = 10, append = false }, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.get(`/tags/${tag}`, { params: { page, limit } });
+        return { ...data, append };
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки постов');
+    }
 })
 
-export const fetchPostsWithFilter = createAsyncThunk('posts/fetchPostsWithFilter',async (params) => {
-    const { data } = await axios.get(`/posts/sort/${params.filter}/${params.direction}/${params.search}`);
-
-    return data;
+export const fetchPostsWithFilter = createAsyncThunk('posts/fetchPostsWithFilter',async ({ filter, direction, search, page = 1, limit = 10, append = false }, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.get(`/posts/sort/${filter}/${direction}/${search || ''}`, { params: { page, limit } });
+        return { ...data, append };
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки постов');
+    }
 })
-export const fetchPostsWithFilterAndSubs = createAsyncThunk('posts/fetchPostsWithFilterAndSubs',async (params) => {
-    const { data } = await axios.get(`/posts/sortWithSubscriptions/${params.filter}/${params.direction}/${params.search}`);
 
-    return data;
+export const fetchPostsWithFilterAndSubs = createAsyncThunk('posts/fetchPostsWithFilterAndSubs',async ({ filter, direction, search, page = 1, limit = 10, append = false }, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.get(`/posts/sortWithSubscriptions/${filter}/${direction}/${search || ''}`, { params: { page, limit } });
+        return { ...data, append };
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки постов');
+    }
 })
 
 export const fetchTags = createAsyncThunk('posts/fetchTags',async () => {
@@ -41,6 +60,14 @@ const initialState = {
         items: [],
         status: 'loading',
         allItems:[],
+        pagination: {
+            page: 1,
+            limit: 10,
+            total: 0,
+            pages: 0,
+            hasMore: false
+        },
+        loadingMore: false
     },
     tags: {
         items: [],
@@ -96,39 +123,72 @@ const postsSlice = createSlice({
         },
     extraReducers:{
         ////Получение статей
-        [fetchPosts.pending]: (state) => {
-            state.posts.status = 'loading';
+        [fetchPosts.pending]: (state, action) => {
+            if (action.meta.arg.append) {
+                state.posts.loadingMore = true;
+            } else {
+                state.posts.status = 'loading';
+            }
         },
         [fetchPosts.fulfilled]: (state, action) => {
             state.posts.status = 'loaded';
-            state.posts.items = action.payload;
+            state.posts.loadingMore = false;
+            if (action.payload.append) {
+                state.posts.items = [...state.posts.items, ...action.payload.posts];
+            } else {
+                state.posts.items = action.payload.posts;
+            }
+            state.posts.pagination = action.payload.pagination;
         },
         [fetchPosts.rejected]: (state) => {
             state.posts.status = 'error';
+            state.posts.loadingMore = false;
             state.posts.items = [];
         },
         ////Cтатьи c параметрами
-        [fetchPostsWithFilter.pending]: (state) => {
-            state.posts.status = 'loading';
+        [fetchPostsWithFilter.pending]: (state, action) => {
+            if (action.meta.arg.append) {
+                state.posts.loadingMore = true;
+            } else {
+                state.posts.status = 'loading';
+            }
         },
         [fetchPostsWithFilter.fulfilled]: (state, action) => {
             state.posts.status = 'loaded';
-            state.posts.items = action.payload;
+            state.posts.loadingMore = false;
+            if (action.payload.append) {
+                state.posts.items = [...state.posts.items, ...action.payload.posts];
+            } else {
+                state.posts.items = action.payload.posts;
+            }
+            state.posts.pagination = action.payload.pagination;
         },
         [fetchPostsWithFilter.rejected]: (state) => {
             state.posts.status = 'error';
+            state.posts.loadingMore = false;
             state.posts.items = [];
         },
         ////Cтатьи c параметрами и только подписки
-        [fetchPostsWithFilterAndSubs.pending]: (state) => {
-            state.posts.status = 'loading';
+        [fetchPostsWithFilterAndSubs.pending]: (state, action) => {
+            if (action.meta.arg.append) {
+                state.posts.loadingMore = true;
+            } else {
+                state.posts.status = 'loading';
+            }
         },
         [fetchPostsWithFilterAndSubs.fulfilled]: (state, action) => {
             state.posts.status = 'loaded';
-            state.posts.items = action.payload;
+            state.posts.loadingMore = false;
+            if (action.payload.append) {
+                state.posts.items = [...state.posts.items, ...action.payload.posts];
+            } else {
+                state.posts.items = action.payload.posts;
+            }
+            state.posts.pagination = action.payload.pagination;
         },
         [fetchPostsWithFilterAndSubs.rejected]: (state) => {
             state.posts.status = 'error';
+            state.posts.loadingMore = false;
             state.posts.items = [];
         },
         ///ТЕГИ
@@ -147,29 +207,50 @@ const postsSlice = createSlice({
         [fetchRemovePost.pending]: (state, action) => {
             state.posts.items = state.posts.items.filter((item) => item._id !== action.meta.arg);
         },
-        //Получние статей с тегом
-        [fetchPostsWithFilter.pending]: (state) => {
-            state.posts.status = 'loading';
+        //Получение статей с тегом
+        [fetchPostsWithTag.pending]: (state, action) => {
+            if (action.meta.arg.append) {
+                state.posts.loadingMore = true;
+            } else {
+                state.posts.status = 'loading';
+            }
         },
-        [fetchPostsWithFilter.fulfilled]: (state, action) => {
+        [fetchPostsWithTag.fulfilled]: (state, action) => {
             state.posts.status = 'loaded';
-            state.posts.items = action.payload;
+            state.posts.loadingMore = false;
+            if (action.payload.append) {
+                state.posts.items = [...state.posts.items, ...action.payload.posts];
+            } else {
+                state.posts.items = action.payload.posts;
+            }
+            state.posts.pagination = action.payload.pagination;
         },
-        [fetchPostsWithFilter.rejected]: (state) => {
+        [fetchPostsWithTag.rejected]: (state) => {
             state.posts.status = 'error';
+            state.posts.loadingMore = false;
             state.posts.items = [];
         },
         //Получение статей по выбранному пользователю
-
-        [fetchPostsWithUser.pending]: (state) => {
-            state.posts.status = 'loading';
+        [fetchPostsWithUser.pending]: (state, action) => {
+            if (action.meta.arg.append) {
+                state.posts.loadingMore = true;
+            } else {
+                state.posts.status = 'loading';
+            }
         },
         [fetchPostsWithUser.fulfilled]: (state, action) => {
             state.posts.status = 'loaded';
-            state.posts.items = action.payload;
+            state.posts.loadingMore = false;
+            if (action.payload.append) {
+                state.posts.items = [...state.posts.items, ...action.payload.posts];
+            } else {
+                state.posts.items = action.payload.posts;
+            }
+            state.posts.pagination = action.payload.pagination;
         },
         [fetchPostsWithUser.rejected]: (state) => {
             state.posts.status = 'error';
+            state.posts.loadingMore = false;
             state.posts.items = [];
         },
     }
