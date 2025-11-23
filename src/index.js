@@ -10,6 +10,20 @@ import { ThemeProvider } from "@mui/material";
 import { theme } from "./theme";
 import store from "./redux/store";
 
+// Подавляем ошибку ResizeObserver (известная проблема Material-UI)
+const resizeObserverLoopErrRe = /^[^(]*ResizeObserver[^)]*$/;
+const resizeObserverLoopErrRe2 = /ResizeObserver loop completed with undelivered notifications/;
+const originalError = window.onerror;
+window.onerror = function(msg, ...args) {
+    if (
+        resizeObserverLoopErrRe.test(msg) ||
+        resizeObserverLoopErrRe2.test(msg)
+    ) {
+        return true;
+    }
+    return originalError ? originalError(msg, ...args) : false;
+};
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
 
 root.render(

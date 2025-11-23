@@ -167,8 +167,15 @@ const messagesSlice = createSlice({
             }
         },
         setCurrentChat: (state, action) => {
+            const previousChatId = state.currentChat?._id;
+            const newChatId = action.payload?._id;
+            
+            // Очищаем сообщения только если переключаемся на другой чат
+            if (previousChatId !== newChatId) {
+                state.messages = [];
+            }
+            
             state.currentChat = action.payload;
-            state.messages = [];
 
             if (action.payload) {
                 const chatInList = state.chats.find(c => c._id === action.payload._id);
@@ -181,9 +188,20 @@ const messagesSlice = createSlice({
             state.messages = state.messages.filter(msg => msg._id !== action.payload);
         },
         updateMessage: (state, action) => {
-            const index = state.messages.findIndex(msg => msg._id === action.payload._id);
+            const updatedMessage = action.payload;
+            const index = state.messages.findIndex(msg => msg._id === updatedMessage._id);
             if (index !== -1) {
-                state.messages[index] = action.payload;
+                state.messages[index] = updatedMessage;
+            }
+            
+            // Обновляем lastMessage в списке чатов, если это последнее сообщение
+            const chatIndex = state.chats.findIndex(chat => {
+                const lastMsgId = chat.lastMessage?._id || chat.lastMessage;
+                return lastMsgId === updatedMessage._id;
+            });
+            
+            if (chatIndex !== -1) {
+                state.chats[chatIndex].lastMessage = updatedMessage;
             }
         },
         removeChat: (state, action) => {
@@ -191,6 +209,17 @@ const messagesSlice = createSlice({
             if (state.currentChat?._id === action.payload) {
                 state.currentChat = null;
                 state.messages = [];
+            }
+        },
+        updateChatUnreadCount: (state, action) => {
+            const { chatId, unreadCount } = action.payload;
+            const chatIndex = state.chats.findIndex(chat => chat._id === chatId);
+            if (chatIndex !== -1) {
+                state.chats[chatIndex].unreadCount = unreadCount;
+            }
+            // Также обновляем currentChat, если это текущий чат
+            if (state.currentChat?._id === chatId) {
+                state.currentChat.unreadCount = unreadCount;
             }
         },
         clearError: (state) => {
@@ -217,6 +246,14 @@ const messagesSlice = createSlice({
             })
             .addCase(fetchChatMessages.fulfilled, (state, action) => {
                 state.messages = action.payload.messages;
+                // Обновляем unreadCount для текущего чата после загрузки сообщений
+                // Сообщения автоматически помечаются как прочитанные на бэкенде
+                if (state.currentChat?._id === action.payload.chatId) {
+                    const chatIndex = state.chats.findIndex(chat => chat._id === action.payload.chatId);
+                    if (chatIndex !== -1) {
+                        state.chats[chatIndex].unreadCount = 0;
+                    }
+                }
             })
             .addCase(sendMessage.fulfilled, (state, action) => {
                 if (!state.messages.some(msg => msg._id === action.payload._id)) {
@@ -264,6 +301,6 @@ const messagesSlice = createSlice({
 
 export const {
     setCurrentChat, addMessage, updateMessageStatus, clearError, removeMessage,
-    updateMessage, removeChat
+    updateMessage, removeChat, updateChatUnreadCount
 } = messagesSlice.actions;
 export default messagesSlice.reducer;

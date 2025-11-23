@@ -5,12 +5,13 @@ import {
     Container, Grid, Paper, TextField, Button, List, ListItem, ListItemAvatar,
     ListItemText, Avatar, Typography, IconButton, Box, Chip, Dialog, DialogTitle,
     DialogContent, DialogActions, ListItemButton, InputAdornment, CircularProgress, Badge,
-    ImageList, ImageListItem, Card, CardMedia, CardContent, CardActionArea
+    ImageList, ImageListItem, Card, CardMedia, CardContent, CardActionArea, Menu, MenuItem
 } from '@mui/material';
-import { Send as SendIcon, AttachFile as AttachFileIcon, Search as SearchIcon, Add as AddIcon, Done, DoneAll, Folder as FolderIcon, Download as DownloadIcon } from '@mui/icons-material';
+import { Send as SendIcon, AttachFile as AttachFileIcon, Search as SearchIcon, Add as AddIcon, Done, DoneAll, Folder as FolderIcon, Download as DownloadIcon, Edit as EditIcon, MoreVert as MoreVertIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import {
     fetchChatMessages, fetchChats, createChat, uploadMessageFiles, addMessage,
-    updateMessageStatus, setCurrentChat, fetchChatFiles
+    updateMessageStatus, setCurrentChat, fetchChatFiles, updateMessage, removeMessage,
+    updateChatUnreadCount
 } from "../../redux/slices/messages";
 import { fetchGetSubs } from "../../redux/slices/subs";
 import { webSocketService } from "../../services/websocket";
@@ -32,6 +33,9 @@ const Messages = () => {
     const [openFilesDialog, setOpenFilesDialog] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [highlightedMessage, setHighlightedMessage] = useState(null);
+    const [contextMenu, setContextMenu] = useState(null);
+    const [editingMessageId, setEditingMessageId] = useState(null);
+    const [editingText, setEditingText] = useState('');
 
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
@@ -55,6 +59,19 @@ const Messages = () => {
 
         dispatch(fetchChats());
         dispatch(fetchGetSubs({ id: userData._id, group: 'subscribers' }));
+        
+        // При монтировании компонента перезагружаем сообщения для открытого чата
+        // Это гарантирует получение всех сообщений, пришедших во время отсутствия
+        if (currentChat?._id) {
+            dispatch(fetchChatMessages(currentChat._id)).then(() => {
+                // После загрузки сообщений отмечаем чат как прочитанный, если есть непрочитанные
+                if (currentChat.unreadCount > 0) {
+                    webSocketService.markChatAsRead(currentChat._id);
+                    dispatch(fetchChats());
+                }
+            });
+            lastLoadedChatRef.current = currentChat._id;
+        }
 
         const handleWebSocketMessage = (message) => {
             const activeChat = currentChatRef.current;
@@ -62,11 +79,12 @@ const Messages = () => {
 
             switch (message.type) {
                 case 'NEW_MESSAGE': {
-                    dispatch(addMessage({ ...message.data, currentUserId: currentUser?._id }));
-
                     const newMessage = message.data.message;
                     const isMyMessage = newMessage.sender._id === currentUser?._id;
                     const isCurrentChat = newMessage.chat === activeChat?._id;
+                    
+                    // Всегда добавляем сообщение в состояние (обновляет список чатов)
+                    dispatch(addMessage({ ...message.data, currentUserId: currentUser?._id }));
 
                     if (!isMyMessage && isCurrentChat) {
                         webSocketService.markMessageAsRead(newMessage._id);
@@ -90,7 +108,32 @@ const Messages = () => {
                     break;
                 case 'CHAT_MARKED_AS_READ':
                     console.log('Chat marked as read confirmed by server:', message.data);
+                    // Обновляем unreadCount в списке чатов
+                    if (message.data.userId === currentUser?._id) {
+                        dispatch(updateChatUnreadCount({ chatId: message.data.chatId, unreadCount: 0 }));
+                    }
                     break;
+                case 'MESSAGE_EDITED':
+                    dispatch(updateMessage(message.data.message));
+                    break;
+                case 'MESSAGE_DELETED': {
+                    dispatch(removeMessage(message.data.messageId));
+                    // Обновляем список чатов, чтобы обновить lastMessage
+                    if (message.data.chat || message.data.chatId) {
+                        // Если есть новое последнее сообщение, обновляем через addMessage
+                        if (message.data.chat?.lastMessage) {
+                            dispatch(addMessage({
+                                message: message.data.chat.lastMessage,
+                                chat: message.data.chat,
+                                currentUserId: currentUser?._id
+                            }));
+                        } else {
+                            // Если последнего сообщения нет или нет информации о чате, обновляем список
+                            dispatch(fetchChats());
+                        }
+                    }
+                    break;
+                }
                 default:
                     break;
             }
@@ -100,7 +143,18 @@ const Messages = () => {
             try {
                 const response = await axios.get('/auth/ws-token');
                 if (response.data.wsToken) {
-                    webSocketService.connect(response.data.wsToken);
+                    // Проверяем состояние WebSocket
+                    const isConnected = webSocketService.isConnected();
+                    
+                    if (!isConnected) {
+                        // Если не подключен, подключаемся
+                        webSocketService.connect(response.data.wsToken);
+                    } else {
+                        // Если уже подключен, просто убеждаемся, что обработчик добавлен
+                        console.log('WebSocket already connected, adding handler');
+                    }
+                    
+                    // Всегда добавляем обработчик (он будет удален в cleanup)
                     webSocketService.addMessageHandler(handleWebSocketMessage);
                 }
             } catch (error) {
@@ -111,10 +165,115 @@ const Messages = () => {
         fetchWsTokenAndConnect();
 
         return () => {
+            // Удаляем только обработчик, но НЕ отключаем WebSocket
+            // WebSocket должен оставаться подключенным, так как он используется глобально
             webSocketService.removeMessageHandler(handleWebSocketMessage);
-            webSocketService.disconnect();
         };
     }, [dispatch, isAuth, navigate, userData?._id]);
+
+    // При возврате на страницу перезагружаем сообщения для открытого чата
+    // Используем useRef для отслеживания последнего загруженного чата
+    const lastLoadedChatRef = useRef(null);
+    const locationRef = useRef(location.pathname);
+    
+    // Отслеживаем изменения location для перезагрузки при возврате через историю браузера
+    useEffect(() => {
+        const currentPath = location.pathname;
+        const previousPath = locationRef.current;
+        
+        // Если вернулись на страницу сообщений (например, через историю браузера)
+        if (currentPath === '/messages' && previousPath !== currentPath && currentChat?._id && isAuth && userData?._id) {
+            // Перезагружаем сообщения для открытого чата
+            dispatch(fetchChatMessages(currentChat._id));
+            lastLoadedChatRef.current = currentChat._id;
+        }
+        
+        locationRef.current = currentPath;
+    }, [location.pathname, currentChat?._id, isAuth, userData?._id, dispatch]);
+    
+    // Обрабатываем событие popstate (навигация через историю браузера)
+    useEffect(() => {
+        const handlePopState = () => {
+            // При возврате через историю браузера перезагружаем сообщения для открытого чата
+            if (currentChat?._id && isAuth && userData?._id && location.pathname === '/messages') {
+                setTimeout(() => {
+                    dispatch(fetchChatMessages(currentChat._id)).then(() => {
+                        // После загрузки сообщений отмечаем чат как прочитанный
+                        if (currentChat.unreadCount > 0) {
+                            webSocketService.markChatAsRead(currentChat._id);
+                            dispatch(fetchChats());
+                        }
+                    });
+                    lastLoadedChatRef.current = currentChat._id;
+                }, 100);
+            }
+        };
+        
+        window.addEventListener('popstate', handlePopState);
+        
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+        };
+    }, [currentChat?._id, currentChat?.unreadCount, isAuth, userData?._id, location.pathname, dispatch]);
+    
+    // Отслеживаем видимость страницы и focus для перезагрузки при возврате
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && currentChat?._id && isAuth && userData?._id) {
+                // При возврате на страницу перезагружаем сообщения
+                dispatch(fetchChatMessages(currentChat._id)).then(() => {
+                    // После загрузки сообщений отмечаем их как прочитанные
+                    // и обновляем unreadCount
+                    if (currentChat.unreadCount > 0) {
+                        webSocketService.markChatAsRead(currentChat._id);
+                        dispatch(fetchChats());
+                    }
+                });
+                lastLoadedChatRef.current = currentChat._id;
+            }
+        };
+        
+        const handleFocus = () => {
+            if (currentChat?._id && isAuth && userData?._id) {
+                // При возврате фокуса на окно перезагружаем сообщения
+                dispatch(fetchChatMessages(currentChat._id)).then(() => {
+                    // После загрузки сообщений отмечаем их как прочитанные
+                    if (currentChat.unreadCount > 0) {
+                        webSocketService.markChatAsRead(currentChat._id);
+                        dispatch(fetchChats());
+                    }
+                });
+                lastLoadedChatRef.current = currentChat._id;
+            }
+        };
+        
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleFocus);
+        
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleFocus);
+        };
+    }, [currentChat?._id, currentChat?.unreadCount, isAuth, userData?._id, dispatch]);
+    
+    useEffect(() => {
+        if (currentChat?._id && isAuth && userData?._id) {
+            // Загружаем сообщения если это новый чат или массив пуст
+            if (lastLoadedChatRef.current !== currentChat._id || messages.length === 0) {
+                dispatch(fetchChatMessages(currentChat._id)).then(() => {
+                    // После загрузки сообщений отмечаем чат как прочитанный, если есть непрочитанные
+                    if (currentChat.unreadCount > 0) {
+                        webSocketService.markChatAsRead(currentChat._id);
+                        dispatch(fetchChats());
+                    }
+                });
+                lastLoadedChatRef.current = currentChat._id;
+            }
+        } else if (!currentChat) {
+            // Очищаем флаг при закрытии чата
+            lastLoadedChatRef.current = null;
+        }
+    }, [currentChat?._id, currentChat?.unreadCount, isAuth, userData?._id, dispatch]);
 
     useEffect(() => {
         const params = new URLSearchParams(location.search);
@@ -131,6 +290,27 @@ const Messages = () => {
             }
         }
     }, [location.search, chatsStatus, chats]);
+    
+    // Перезагружаем сообщения для открытого чата после загрузки списка чатов
+    // Это нужно для случаев, когда пользователь возвращается на страницу через историю браузера
+    useEffect(() => {
+        if (chatsStatus === 'succeeded' && currentChat?._id && isAuth && userData?._id) {
+            // Проверяем, что чат все еще существует в списке
+            const chatExists = chats.some(c => c._id === currentChat._id);
+            if (chatExists && lastLoadedChatRef.current !== currentChat._id) {
+                // Перезагружаем сообщения, если они еще не загружены
+                const chat = chats.find(c => c._id === currentChat._id);
+                dispatch(fetchChatMessages(currentChat._id)).then(() => {
+                    // После загрузки сообщений отмечаем чат как прочитанный, если есть непрочитанные
+                    if (chat && chat.unreadCount > 0) {
+                        webSocketService.markChatAsRead(currentChat._id);
+                        dispatch(fetchChats());
+                    }
+                });
+                lastLoadedChatRef.current = currentChat._id;
+            }
+        }
+    }, [chatsStatus, currentChat?._id, chats, isAuth, userData?._id, dispatch]);
 
     useEffect(() => {
         if (highlightedMessage && messages.length > 0) {
@@ -149,6 +329,7 @@ const Messages = () => {
 
     useEffect(() => {
         if (currentChat && messages.length > 0 && userData) {
+            // Отмечаем видимые сообщения как прочитанные
             markVisibleMessagesAsRead();
         }
     }, [messages, currentChat, userData]);
@@ -174,7 +355,11 @@ const Messages = () => {
             webSocketService.markChatAsRead(chat._id);
         }
         dispatch(setCurrentChat(chat));
+        // Всегда загружаем сообщения заново при открытии чата
+        // Это гарантирует, что все сообщения, полученные через WebSocket во время отсутствия, будут отображены
         dispatch(fetchChatMessages(chat._id));
+        // Обновляем флаг загруженного чата
+        lastLoadedChatRef.current = chat._id;
     };
 
     const handleSendMessage = async () => {
@@ -236,6 +421,54 @@ const Messages = () => {
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
         return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    };
+
+    const handleMessageContextMenu = (event, message) => {
+        event.preventDefault();
+        if (message.sender._id === userData._id) {
+            setContextMenu({
+                mouseX: event.clientX - 2,
+                mouseY: event.clientY - 4,
+                message: message
+            });
+        }
+    };
+
+    const handleCloseContextMenu = () => {
+        setContextMenu(null);
+    };
+
+    const handleStartEdit = (message) => {
+        setEditingMessageId(message._id);
+        setEditingText(message.text || '');
+        handleCloseContextMenu();
+    };
+
+    const handleCancelEdit = () => {
+        setEditingMessageId(null);
+        setEditingText('');
+    };
+
+    const handleSaveEdit = () => {
+        if (editingMessageId && editingText.trim()) {
+            webSocketService.editMessage(editingMessageId, editingText.trim());
+            setEditingMessageId(null);
+            setEditingText('');
+        }
+    };
+
+    const canEditMessage = (message) => {
+        if (!message || message.sender._id !== userData._id) return false;
+        const messageAge = Date.now() - new Date(message.createdAt).getTime();
+        const fifteenMinutes = 15 * 60 * 1000;
+        return messageAge <= fifteenMinutes;
+    };
+
+    const handleDeleteMessage = (message) => {
+        if (window.confirm('Вы уверены, что хотите удалить это сообщение?')) {
+            webSocketService.deleteMessage(message._id);
+            handleCloseContextMenu();
+        }
     };
 
     const formatTime = (dateString) => {
@@ -354,8 +587,15 @@ const Messages = () => {
                                     {messages.map((message) => {
                                         const isMyMessage = message.sender._id === userData._id;
                                         const isHighlighted = highlightedMessage === message._id;
+                                        const isEditing = editingMessageId === message._id;
+                                        const showEditMenu = isMyMessage && canEditMessage(message);
                                         return (
-                                            <Box id={`message-${message._id}`} key={message._id} sx={{ display: 'flex', justifyContent: isMyMessage ? 'flex-end' : 'flex-start', mb: 2 }}>
+                                            <Box 
+                                                id={`message-${message._id}`} 
+                                                key={message._id} 
+                                                sx={{ display: 'flex', justifyContent: isMyMessage ? 'flex-end' : 'flex-start', mb: 2 }}
+                                                onContextMenu={(e) => handleMessageContextMenu(e, message)}
+                                            >
                                                 <Box
                                                     sx={{
                                                         maxWidth: '70%',
@@ -363,9 +603,33 @@ const Messages = () => {
                                                         borderRadius: 2,
                                                         bgcolor: isHighlighted ? 'secondary.light' : (isMyMessage ? 'primary.main' : 'grey.100'),
                                                         color: isMyMessage ? 'white' : 'text.primary',
-                                                        transition: 'background-color 0.5s ease'
+                                                        transition: 'background-color 0.5s ease',
+                                                        position: 'relative'
                                                     }}
                                                 >
+                                                    {showEditMenu && !isEditing && (
+                                                        <IconButton
+                                                            size="small"
+                                                            sx={{
+                                                                position: 'absolute',
+                                                                top: 4,
+                                                                right: 4,
+                                                                color: isMyMessage ? 'white' : 'text.secondary',
+                                                                opacity: 0.7,
+                                                                '&:hover': { opacity: 1 }
+                                                            }}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setContextMenu({
+                                                                    mouseX: e.clientX,
+                                                                    mouseY: e.clientY,
+                                                                    message: message
+                                                                });
+                                                            }}
+                                                        >
+                                                            <MoreVertIcon fontSize="small" />
+                                                        </IconButton>
+                                                    )}
                                                     {message.attachments && message.attachments.map((file, index) => (
                                                         <Box key={index} sx={{ mb: 1 }}>
                                                             {file.match(/\.(jpg|jpeg|png|gif)$/i) ? (
@@ -375,11 +639,45 @@ const Messages = () => {
                                                             )}
                                                         </Box>
                                                     ))}
-                                                    {message.text && (
-                                                        <Typography variant="body1" sx={{ overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>{message.text}</Typography>
+                                                    {isEditing ? (
+                                                        <Box>
+                                                            <TextField
+                                                                fullWidth
+                                                                multiline
+                                                                value={editingText}
+                                                                onChange={(e) => setEditingText(e.target.value)}
+                                                                variant="outlined"
+                                                                size="small"
+                                                                sx={{
+                                                                    mb: 1,
+                                                                    '& .MuiOutlinedInput-root': {
+                                                                        bgcolor: 'white',
+                                                                        color: 'text.primary'
+                                                                    }
+                                                                }}
+                                                                autoFocus
+                                                            />
+                                                            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                                                                <Button size="small" onClick={handleCancelEdit}>Отмена</Button>
+                                                                <Button size="small" variant="contained" onClick={handleSaveEdit}>Сохранить</Button>
+                                                            </Box>
+                                                        </Box>
+                                                    ) : (
+                                                        <>
+                                                            {message.text && (
+                                                                <Typography variant="body1" sx={{ overflowWrap: 'break-word', whiteSpace: 'pre-wrap' }}>
+                                                                    {message.text}
+                                                                </Typography>
+                                                            )}
+                                                        </>
                                                     )}
-                                                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mt: 1, ml: 2 }}>
-                                                        <Typography variant="caption" sx={{ opacity: 0.7, mr: 0.5 }}>
+                                                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mt: 1, gap: 0.5 }}>
+                                                        {message.edited && (
+                                                            <Typography variant="caption" sx={{ opacity: 0.7, fontStyle: 'italic' }}>
+                                                                изменено
+                                                            </Typography>
+                                                        )}
+                                                        <Typography variant="caption" sx={{ opacity: 0.7 }}>
                                                             {formatTime(message.createdAt)}
                                                         </Typography>
                                                         {renderMessageStatus(message)}
@@ -594,6 +892,29 @@ const Messages = () => {
                     <Button onClick={() => setOpenFilesDialog(false)}>Закрыть</Button>
                 </DialogActions>
             </Dialog>
+            <Menu
+                open={contextMenu !== null}
+                onClose={handleCloseContextMenu}
+                anchorReference="anchorPosition"
+                anchorPosition={
+                    contextMenu !== null
+                        ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+                        : undefined
+                }
+            >
+                {contextMenu && canEditMessage(contextMenu.message) && (
+                    <MenuItem onClick={() => handleStartEdit(contextMenu.message)}>
+                        <EditIcon sx={{ mr: 1, fontSize: 20 }} />
+                        Редактировать
+                    </MenuItem>
+                )}
+                {contextMenu && contextMenu.message.sender._id === userData._id && (
+                    <MenuItem onClick={() => handleDeleteMessage(contextMenu.message)} sx={{ color: 'error.main' }}>
+                        <DeleteIcon sx={{ mr: 1, fontSize: 20 }} />
+                        Удалить
+                    </MenuItem>
+                )}
+            </Menu>
         </Container>
     );
 };
