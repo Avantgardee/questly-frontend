@@ -95,13 +95,24 @@ export const uploadMessageFiles = createAsyncThunk('messages/uploadFiles', async
     }
 });
 
+export const fetchChatFiles = createAsyncThunk('messages/fetchChatFiles', async (chatId, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.get(`/chats/${chatId}/files`);
+        return data.files;
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки файлов');
+    }
+});
+
 const initialState = {
     chats: [],
     currentChat: null,
     messages: [],
     status: 'idle',
     error: null,
-    uploadStatus: 'idle'
+    uploadStatus: 'idle',
+    chatFiles: [],
+    filesStatus: 'idle'
 };
 
 const messagesSlice = createSlice({
@@ -238,6 +249,15 @@ const messagesSlice = createSlice({
             .addCase(editMessage.fulfilled, (state, action) => {
                 const index = state.messages.findIndex(msg => msg._id === action.payload._id);
                 if (index !== -1) { state.messages[index] = action.payload; }
+            })
+            .addCase(fetchChatFiles.pending, (state) => { state.filesStatus = 'loading'; })
+            .addCase(fetchChatFiles.fulfilled, (state, action) => {
+                state.filesStatus = 'succeeded';
+                state.chatFiles = action.payload;
+            })
+            .addCase(fetchChatFiles.rejected, (state, action) => {
+                state.filesStatus = 'failed';
+                state.error = action.payload;
             });
     }
 });

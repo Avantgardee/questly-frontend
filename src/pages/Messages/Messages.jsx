@@ -4,12 +4,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
     Container, Grid, Paper, TextField, Button, List, ListItem, ListItemAvatar,
     ListItemText, Avatar, Typography, IconButton, Box, Chip, Dialog, DialogTitle,
-    DialogContent, DialogActions, ListItemButton, InputAdornment, CircularProgress, Badge
+    DialogContent, DialogActions, ListItemButton, InputAdornment, CircularProgress, Badge,
+    ImageList, ImageListItem, Card, CardMedia, CardContent, CardActionArea
 } from '@mui/material';
-import { Send as SendIcon, AttachFile as AttachFileIcon, Search as SearchIcon, Add as AddIcon, Done, DoneAll } from '@mui/icons-material';
+import { Send as SendIcon, AttachFile as AttachFileIcon, Search as SearchIcon, Add as AddIcon, Done, DoneAll, Folder as FolderIcon, Download as DownloadIcon } from '@mui/icons-material';
 import {
     fetchChatMessages, fetchChats, createChat, uploadMessageFiles, addMessage,
-    updateMessageStatus, setCurrentChat
+    updateMessageStatus, setCurrentChat, fetchChatFiles
 } from "../../redux/slices/messages";
 import { fetchGetSubs } from "../../redux/slices/subs";
 import { webSocketService } from "../../services/websocket";
@@ -21,13 +22,14 @@ const Messages = () => {
     const navigate = useNavigate();
     const location = useLocation();
     const isAuth = useSelector(selectIsAuth);
-    const { chats, messages, currentChat, status: chatsStatus } = useSelector(state => state.messages);
+    const { chats, messages, currentChat, status: chatsStatus, chatFiles, filesStatus } = useSelector(state => state.messages);
     const userData = useSelector(state => state.auth.data);
     const { items: subscribers, status: subsStatus } = useSelector(state => state.subs);
 
     const [messageText, setMessageText] = useState('');
     const [selectedFiles, setSelectedFiles] = useState([]);
     const [openNewChatDialog, setOpenNewChatDialog] = useState(false);
+    const [openFilesDialog, setOpenFilesDialog] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [highlightedMessage, setHighlightedMessage] = useState(null);
 
@@ -218,6 +220,24 @@ const Messages = () => {
         }
     };
 
+    const handleOpenFilesDialog = async () => {
+        if (currentChat?._id) {
+            setOpenFilesDialog(true);
+            await dispatch(fetchChatFiles(currentChat._id));
+        }
+    };
+
+    const handleDownloadFile = (fileUrl) => {
+        window.open(`http://localhost:4444${fileUrl}`, '_blank');
+    };
+
+    const formatFileSize = (bytes) => {
+        if (!bytes) return 'Неизвестно';
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    };
+
     const formatTime = (dateString) => {
         if (!dateString) return '';
         return new Date(dateString).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -319,8 +339,16 @@ const Messages = () => {
                     <Paper sx={{ p: 2, height: '80vh', display: 'flex', flexDirection: 'column' }}>
                         {currentChat ? (
                             <>
-                                <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+                                <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Typography variant="h6">{getOtherParticipant(currentChat)?.fullName || 'Пользователь'}</Typography>
+                                    <Button
+                                        variant="outlined"
+                                        size="small"
+                                        startIcon={<FolderIcon />}
+                                        onClick={handleOpenFilesDialog}
+                                    >
+                                        Файлы
+                                    </Button>
                                 </Box>
                                 <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
                                     {messages.map((message) => {
@@ -438,6 +466,132 @@ const Messages = () => {
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setOpenNewChatDialog(false)}>Отмена</Button>
+                </DialogActions>
+            </Dialog>
+            <Dialog 
+                open={openFilesDialog} 
+                onClose={() => setOpenFilesDialog(false)} 
+                maxWidth="lg" 
+                fullWidth
+                PaperProps={{
+                    sx: { maxHeight: '90vh' }
+                }}
+            >
+                <DialogTitle>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="h6">Файлы в переписке</Typography>
+                        <IconButton onClick={() => setOpenFilesDialog(false)} size="small">
+                            <Typography variant="h6">×</Typography>
+                        </IconButton>
+                    </Box>
+                </DialogTitle>
+                <DialogContent sx={{ p: 2 }}>
+                    {filesStatus === 'loading' ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                            <CircularProgress />
+                        </Box>
+                    ) : chatFiles.length === 0 ? (
+                        <Box sx={{ textAlign: 'center', p: 4 }}>
+                            <FolderIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                            <Typography variant="body1" color="text.secondary">
+                                В этой переписке пока нет файлов
+                            </Typography>
+                        </Box>
+                    ) : (
+                        <Grid container spacing={1.5}>
+                            {chatFiles.map((file, index) => (
+                                <Grid item xs={6} sm={4} md={3} lg={2.4} key={index}>
+                                    <Card 
+                                        sx={{ 
+                                            position: 'relative',
+                                            cursor: 'pointer',
+                                            transition: 'transform 0.2s, box-shadow 0.2s',
+                                            '&:hover': {
+                                                transform: 'scale(1.02)',
+                                                boxShadow: 3
+                                            }
+                                        }}
+                                        onClick={() => handleDownloadFile(file.url)}
+                                    >
+                                        {file.isImage ? (
+                                            <Box sx={{ position: 'relative', paddingTop: '100%' }}>
+                                                <Box
+                                                    component="img"
+                                                    src={`http://localhost:4444${file.url}`}
+                                                    alt={file.fileName}
+                                                    sx={{
+                                                        position: 'absolute',
+                                                        top: 0,
+                                                        left: 0,
+                                                        width: '100%',
+                                                        height: '100%',
+                                                        objectFit: 'cover',
+                                                        borderRadius: '4px 4px 0 0'
+                                                    }}
+                                                />
+                                            </Box>
+                                        ) : (
+                                            <Box
+                                                sx={{
+                                                    paddingTop: '100%',
+                                                    bgcolor: 'grey.100',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    position: 'relative'
+                                                }}
+                                            >
+                                                <AttachFileIcon sx={{ 
+                                                    position: 'absolute',
+                                                    top: '50%',
+                                                    left: '50%',
+                                                    transform: 'translate(-50%, -50%)',
+                                                    fontSize: 32, 
+                                                    color: 'text.secondary' 
+                                                }} />
+                                            </Box>
+                                        )}
+                                        <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+                                            <Typography 
+                                                variant="caption" 
+                                                component="div" 
+                                                noWrap 
+                                                sx={{ 
+                                                    fontWeight: 500,
+                                                    fontSize: '0.7rem',
+                                                    display: 'block',
+                                                    overflow: 'hidden',
+                                                    textOverflow: 'ellipsis'
+                                                }}
+                                                title={file.fileName}
+                                            >
+                                                {file.fileName}
+                                            </Typography>
+                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
+                                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                                                    {file.fileType?.toUpperCase()}
+                                                </Typography>
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleDownloadFile(file.url);
+                                                    }}
+                                                    sx={{ p: 0.5 }}
+                                                >
+                                                    <DownloadIcon sx={{ fontSize: 16 }} />
+                                                </IconButton>
+                                            </Box>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                            ))}
+                        </Grid>
+                    )}
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => setOpenFilesDialog(false)}>Закрыть</Button>
                 </DialogActions>
             </Dialog>
         </Container>

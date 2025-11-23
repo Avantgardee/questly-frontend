@@ -1,11 +1,29 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { Container, Button, Avatar, TextField, List, ListItem, ListItemText, Paper, CircularProgress, InputAdornment } from "@mui/material";
+import { 
+  Container, 
+  Button, 
+  Avatar, 
+  TextField, 
+  List, 
+  ListItem, 
+  ListItemText, 
+  ListItemAvatar, 
+  Paper, 
+  CircularProgress, 
+  InputAdornment, 
+  Typography, 
+  Box, 
+  Chip 
+} from "@mui/material";
+import ArticleIcon from '@mui/icons-material/Article';
+import PersonIcon from '@mui/icons-material/Person';
+import CommentIcon from '@mui/icons-material/Comment';
+import MessageIcon from '@mui/icons-material/Message';
 import PeopleIcon from '@mui/icons-material/People';
 import CreateIcon from '@mui/icons-material/Create';
 import LogoutIcon from '@mui/icons-material/Logout';
-import MessageIcon from '@mui/icons-material/Message';
 import SearchIcon from '@mui/icons-material/Search';
 import styles from './Header.module.scss';
 import { fetchAuthMe, logout, selectIsAuth } from "../../redux/slices/auth";
@@ -59,15 +77,48 @@ export const Header = () => {
         query: `
           query Search($term: String!) {
             search(term: $term) {
-              posts { _id title }
-              users { _id fullName }
-              messages { _id text chat }
+              posts { 
+                _id 
+                title 
+                user {
+                  _id
+                  fullName
+                  avatarUrl
+                }
+              }
+              users { 
+                _id 
+                fullName 
+                email 
+                avatarUrl 
+              }
+              messages { 
+                _id 
+                text 
+                chat 
+              }
+              comments {
+                _id
+                text
+                postUrl
+                user {
+                  _id
+                  fullName
+                  avatarUrl
+                }
+              }
             }
           }
         `,
         variables: { term: debouncedSearchTerm }
       }).then(response => {
-        setSearchResults(response.data.data.search);
+        console.log('Search response:', response.data);
+        if (response.data && response.data.data && response.data.data.search) {
+          setSearchResults(response.data.data.search);
+        } else {
+          console.error('Unexpected response format:', response.data);
+          setSearchResults({ posts: [], users: [], messages: [] });
+        }
       }).catch(error => {
         console.error('Error during search:', error);
         setSearchResults(null);
@@ -149,25 +200,116 @@ export const Header = () => {
                         <InputAdornment position="start">
                           <SearchIcon />
                         </InputAdornment>
-                    ),
+                    )
                   }}
               />
               {searchResults && (
-                  <Paper className={styles.searchResults}>
+                  <Paper className={styles.searchResults} style={{ position: 'absolute', zIndex: 1000, width: '100%', maxHeight: '400px', overflow: 'auto' }}>
                     <List>
+                      {!searchResults.posts?.length && !searchResults.users?.length && !searchResults.comments?.length && !searchResults.messages?.length && (
+                        <ListItem>
+                          <ListItemText 
+                            primary="Ничего не найдено" 
+                            secondary="Попробуйте изменить поисковый запрос"
+                            sx={{ textAlign: 'center', py: 2 }}
+                          />
+                        </ListItem>
+                      )}
+                      {searchResults.comments?.map(comment => (
+                          <ListItem 
+                            key={comment._id} 
+                            button 
+                            component={Link} 
+                            to={comment.postUrl || '#'} 
+                            onClick={onSearchResultClick}
+                            disabled={!comment.postUrl}
+                          >
+                            <ListItemAvatar>
+                              <Avatar 
+                                alt={comment.user?.fullName} 
+                                src={comment.user?.avatarUrl ? `http://localhost:4444${comment.user.avatarUrl}` : '/noavatar.png'}
+                              />
+                            </ListItemAvatar>
+                            <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
+                              <Typography variant="body1" noWrap sx={{ maxWidth: '100%' }}>
+                                {comment.text}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary" noWrap>
+                                {comment.user?.fullName || 'Анонимный пользователь'}
+                              </Typography>
+                            </Box>
+                            <Chip 
+                              icon={<CommentIcon fontSize="small" />} 
+                              label="Комментарий" 
+                              size="small" 
+                              color="warning" 
+                              variant="outlined"
+                            />
+                          </ListItem>
+                      ))}
                       {searchResults.posts?.map(post => (
                           <ListItem key={post._id} button component={Link} to={`/posts/${post._id}`} onClick={onSearchResultClick}>
-                            <ListItemText primary={post.title} secondary="Пост" />
+                            <ListItemAvatar>
+                              <Avatar 
+                                alt={post.user?.fullName} 
+                                src={post.user?.avatarUrl ? `http://localhost:4444${post.user.avatarUrl}` : '/noavatar.png'}
+                              />
+                            </ListItemAvatar>
+                            <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
+                              <Typography variant="subtitle1" noWrap>{post.title}</Typography>
+                              <Typography variant="body2" color="text.secondary" noWrap>
+                                {post.user?.fullName || 'Неизвестный автор'}
+                              </Typography>
+                            </Box>
+                            <Chip 
+                              icon={<ArticleIcon fontSize="small" />} 
+                              label="Пост" 
+                              size="small" 
+                              color="primary" 
+                              variant="outlined"
+                            />
                           </ListItem>
                       ))}
                       {searchResults.users?.map(user => (
                           <ListItem key={user._id} button component={Link} to={`/profile/${user._id}`} onClick={onSearchResultClick}>
-                            <ListItemText primary={user.fullName} secondary="Пользователь" />
+                            <ListItemAvatar>
+                              <Avatar 
+                                alt={user.fullName} 
+                                src={user.avatarUrl ? `http://localhost:4444${user.avatarUrl}` : '/noavatar.png'}
+                              />
+                            </ListItemAvatar>
+                            <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
+                              <Typography variant="subtitle1" noWrap>{user.fullName}</Typography>
+                              <Typography variant="body2" color="text.secondary" noWrap>
+                                {user.email}
+                              </Typography>
+                            </Box>
+                            <Chip 
+                              icon={<PersonIcon fontSize="small" />} 
+                              label="Пользователь" 
+                              size="small" 
+                              color="secondary" 
+                              variant="outlined"
+                            />
                           </ListItem>
                       ))}
                       {searchResults.messages?.map(message => (
                           <ListItem key={message._id} button component={Link} to={`/messages?chatId=${message.chat}&messageId=${message._id}`} onClick={onSearchResultClick}>
-                            <ListItemText primary={`"${message.text}"`} secondary="Сообщение" />
+                            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                              <MessageIcon color="action" sx={{ mr: 2 }} />
+                              <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
+                                <Typography variant="body1" noWrap sx={{ maxWidth: '100%' }}>
+                                  {message.text}
+                                </Typography>
+                              </Box>
+                              <Chip 
+                                icon={<MessageIcon fontSize="small" />} 
+                                label="Сообщение" 
+                                size="small" 
+                                color="info" 
+                                variant="outlined"
+                              />
+                            </Box>
                           </ListItem>
                       ))}
                     </List>
