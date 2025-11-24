@@ -26,7 +26,6 @@ export const FullPost = () => {
     const dispatch = useDispatch();
     const userData = useSelector((state) => state.auth.data);
     const [data, setData] = React.useState();
-    const [newComm, setNewComm] = React.useState(false);
     const [comments, setCommentsData] = React.useState([]);
      const [isLoading, setLoading] = React.useState(true);
     const [isComLoading, setComLoading] = React.useState(true);
@@ -43,20 +42,25 @@ export const FullPost = () => {
             .then((res) => {
                 setCommentsData(res.data);
                 setComLoading(false);
-                setNewComm(false);
             })
             .catch((err) =>
             {
                 setShowNotFoundDialog(true);
             });
     }
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
+        if (!text.trim()) return;
+        
         try{
             const postId = params.id;
-            dispatch(fetchCreateComment({postId,text}));
-            setComment(' ');
-            setNewComm(true);
-            textFieldRef.current.value = '';
+            const result = await dispatch(fetchCreateComment({postId, text: text.trim()}));
+            
+            if (fetchCreateComment.fulfilled.match(result)) {
+                // Добавляем новый комментарий локально без перезагрузки всего списка
+                setCommentsData(prevComments => [...prevComments, result.payload]);
+                setComment('');
+                textFieldRef.current.value = '';
+            }
         }
         catch(error){
             console.log(error);
@@ -65,8 +69,9 @@ export const FullPost = () => {
 
     const [text, setComment] = React.useState('');
     React.useEffect(() => {
+        setComLoading(true);
         getAllCommentsForPost();
-    }, [newComm]);
+    }, [id]);
 
 
     React.useEffect(() => {

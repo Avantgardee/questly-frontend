@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   Dialog,
@@ -21,9 +21,21 @@ import styles from '../UserInfo/UserInfo.module.scss';
 
 const LikesModal = ({ open, onClose, postId }) => {
   const dispatch = useDispatch();
-  const likes = useSelector((state) => state.posts.postLikes.items[postId] || []);
-  const pagination = useSelector((state) => state.posts.postLikes.pagination[postId]);
+  
+  // Мемоизируем селекторы, чтобы избежать создания новых ссылок
+  const postLikesItems = useSelector((state) => state.posts.postLikes.items);
+  const postLikesPagination = useSelector((state) => state.posts.postLikes.pagination);
   const isLoadingMore = useSelector((state) => state.posts.postLikes.loadingMore);
+  
+  // Мемоизируем извлеченные значения
+  const likes = useMemo(() => {
+    return postLikesItems[postId] || [];
+  }, [postLikesItems, postId]);
+  
+  const pagination = useMemo(() => {
+    return postLikesPagination[postId];
+  }, [postLikesPagination, postId]);
+  
   const hasMore = pagination?.hasMore || false;
   const observerTarget = useRef(null);
   const currentPageRef = useRef(1);

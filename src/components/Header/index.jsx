@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { 
@@ -15,7 +15,8 @@ import {
   InputAdornment, 
   Typography, 
   Box, 
-  Chip 
+  Chip,
+  ClickAwayListener
 } from "@mui/material";
 import ArticleIcon from '@mui/icons-material/Article';
 import PersonIcon from '@mui/icons-material/Person';
@@ -45,6 +46,8 @@ export const Header = () => {
   const [openDialog, setOpenDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState(null);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
+  const searchContainerRef = useRef(null);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 500);
 
@@ -73,6 +76,7 @@ export const Header = () => {
 
   useEffect(() => {
     if (debouncedSearchTerm) {
+      setIsSearchLoading(true);
       axios.post('/graphql', {
         query: `
           query Search($term: String!) {
@@ -122,9 +126,12 @@ export const Header = () => {
       }).catch(error => {
         console.error('Error during search:', error);
         setSearchResults(null);
+      }).finally(() => {
+        setIsSearchLoading(false);
       });
     } else {
       setSearchResults(null);
+      setIsSearchLoading(false);
     }
   }, [debouncedSearchTerm]);
 
@@ -144,6 +151,16 @@ export const Header = () => {
   const onSearchResultClick = () => {
     setSearchTerm('');
     setSearchResults(null);
+    setIsSearchLoading(false);
+  };
+
+  const handleSearchClickAway = (event) => {
+    // Не закрываем, если клик был внутри контейнера поиска (TextField или результаты)
+    if (searchContainerRef.current && searchContainerRef.current.contains(event.target)) {
+      return;
+    }
+    setSearchResults(null);
+    setIsSearchLoading(false);
   };
 
   if (!authChecked) {
@@ -187,135 +204,146 @@ export const Header = () => {
               </Link>
             </div>
 
-            <div className={styles.search}>
-              <TextField
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  placeholder="Поиск по сайту..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                        <InputAdornment position="start">
-                          <SearchIcon />
-                        </InputAdornment>
-                    )
-                  }}
-              />
-              {searchResults && (
-                  <Paper className={styles.searchResults} style={{ position: 'absolute', zIndex: 1000, width: '100%', maxHeight: '400px', overflow: 'auto' }}>
-                    <List>
-                      {!searchResults.posts?.length && !searchResults.users?.length && !searchResults.comments?.length && !searchResults.messages?.length && (
-                        <ListItem>
-                          <ListItemText 
-                            primary="Ничего не найдено" 
-                            secondary="Попробуйте изменить поисковый запрос"
-                            sx={{ textAlign: 'center', py: 2 }}
-                          />
-                        </ListItem>
-                      )}
-                      {searchResults.comments?.map(comment => (
-                          <ListItem 
-                            key={comment._id} 
-                            button 
-                            component={Link} 
-                            to={comment.postUrl || '#'} 
-                            onClick={onSearchResultClick}
-                            disabled={!comment.postUrl}
-                          >
-                            <ListItemAvatar>
-                              <Avatar 
-                                alt={comment.user?.fullName} 
-                                src={comment.user?.avatarUrl ? `http://localhost:4444${comment.user.avatarUrl}` : '/noavatar.png'}
-                              />
-                            </ListItemAvatar>
-                            <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
-                              <Typography variant="body1" noWrap sx={{ maxWidth: '100%' }}>
-                                {comment.text}
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary" noWrap>
-                                {comment.user?.fullName || 'Анонимный пользователь'}
+            <ClickAwayListener onClickAway={handleSearchClickAway}>
+              <div className={styles.search} ref={searchContainerRef}>
+                <TextField
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    placeholder="Поиск по сайту..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    InputProps={{
+                      startAdornment: (
+                          <InputAdornment position="start">
+                            <SearchIcon />
+                          </InputAdornment>
+                      )
+                    }}
+                />
+                {(searchResults || isSearchLoading) && (
+                    <Paper className={styles.searchResults} style={{ position: 'absolute', zIndex: 1000, width: '100%', maxHeight: '400px', overflow: 'auto' }}>
+                      <List>
+                        {isSearchLoading ? (
+                          <ListItem>
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', py: 3 }}>
+                              <CircularProgress size={24} sx={{ mr: 2 }} />
+                              <Typography variant="body2" color="text.secondary">
+                                Поиск...
                               </Typography>
                             </Box>
-                            <Chip 
-                              icon={<CommentIcon fontSize="small" />} 
-                              label="Комментарий" 
-                              size="small" 
-                              color="warning" 
-                              variant="outlined"
+                          </ListItem>
+                        ) : !searchResults.posts?.length && !searchResults.users?.length && !searchResults.comments?.length && !searchResults.messages?.length ? (
+                          <ListItem>
+                            <ListItemText 
+                              primary="Ничего не найдено" 
+                              secondary="Попробуйте изменить поисковый запрос"
+                              sx={{ textAlign: 'center', py: 2 }}
                             />
                           </ListItem>
-                      ))}
-                      {searchResults.posts?.map(post => (
-                          <ListItem key={post._id} button component={Link} to={`/posts/${post._id}`} onClick={onSearchResultClick}>
-                            <ListItemAvatar>
-                              <Avatar 
-                                alt={post.user?.fullName} 
-                                src={post.user?.avatarUrl ? `http://localhost:4444${post.user.avatarUrl}` : '/noavatar.png'}
-                              />
-                            </ListItemAvatar>
-                            <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
-                              <Typography variant="subtitle1" noWrap>{post.title}</Typography>
-                              <Typography variant="body2" color="text.secondary" noWrap>
-                                {post.user?.fullName || 'Неизвестный автор'}
-                              </Typography>
-                            </Box>
-                            <Chip 
-                              icon={<ArticleIcon fontSize="small" />} 
-                              label="Пост" 
-                              size="small" 
-                              color="primary" 
-                              variant="outlined"
-                            />
-                          </ListItem>
-                      ))}
-                      {searchResults.users?.map(user => (
-                          <ListItem key={user._id} button component={Link} to={`/profile/${user._id}`} onClick={onSearchResultClick}>
-                            <ListItemAvatar>
-                              <Avatar 
-                                alt={user.fullName} 
-                                src={user.avatarUrl ? `http://localhost:4444${user.avatarUrl}` : '/noavatar.png'}
-                              />
-                            </ListItemAvatar>
-                            <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
-                              <Typography variant="subtitle1" noWrap>{user.fullName}</Typography>
-                              <Typography variant="body2" color="text.secondary" noWrap>
-                                {user.email}
-                              </Typography>
-                            </Box>
-                            <Chip 
-                              icon={<PersonIcon fontSize="small" />} 
-                              label="Пользователь" 
-                              size="small" 
-                              color="secondary" 
-                              variant="outlined"
-                            />
-                          </ListItem>
-                      ))}
-                      {searchResults.messages?.map(message => (
-                          <ListItem key={message._id} button component={Link} to={`/messages?chatId=${message.chat}&messageId=${message._id}`} onClick={onSearchResultClick}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                              <MessageIcon color="action" sx={{ mr: 2 }} />
+                        ) : null}
+                        {!isSearchLoading && searchResults && searchResults.comments?.map(comment => (
+                            <ListItem 
+                              key={comment._id} 
+                              button 
+                              component={Link} 
+                              to={comment.postUrl || '#'} 
+                              onClick={onSearchResultClick}
+                              disabled={!comment.postUrl}
+                            >
+                              <ListItemAvatar>
+                                <Avatar 
+                                  alt={comment.user?.fullName} 
+                                  src={comment.user?.avatarUrl ? `http://localhost:4444${comment.user.avatarUrl}` : '/noavatar.png'}
+                                />
+                              </ListItemAvatar>
                               <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
                                 <Typography variant="body1" noWrap sx={{ maxWidth: '100%' }}>
-                                  {message.text}
+                                  {comment.text}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" noWrap>
+                                  {comment.user?.fullName || 'Анонимный пользователь'}
                                 </Typography>
                               </Box>
                               <Chip 
-                                icon={<MessageIcon fontSize="small" />} 
-                                label="Сообщение" 
+                                icon={<CommentIcon fontSize="small" />} 
+                                label="Комментарий" 
                                 size="small" 
-                                color="info" 
+                                color="warning" 
                                 variant="outlined"
                               />
-                            </Box>
-                          </ListItem>
+                            </ListItem>
+                        ))}
+                        {!isSearchLoading && searchResults && searchResults.posts?.map(post => (
+                            <ListItem key={post._id} button component={Link} to={`/posts/${post._id}`} onClick={onSearchResultClick}>
+                              <ListItemAvatar>
+                                <Avatar 
+                                  alt={post.user?.fullName} 
+                                  src={post.user?.avatarUrl ? `http://localhost:4444${post.user.avatarUrl}` : '/noavatar.png'}
+                                />
+                              </ListItemAvatar>
+                              <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
+                                <Typography variant="subtitle1" noWrap>{post.title}</Typography>
+                                <Typography variant="body2" color="text.secondary" noWrap>
+                                  {post.user?.fullName || 'Неизвестный автор'}
+                                </Typography>
+                              </Box>
+                              <Chip 
+                                icon={<ArticleIcon fontSize="small" />} 
+                                label="Пост" 
+                                size="small" 
+                                color="primary" 
+                                variant="outlined"
+                              />
+                            </ListItem>
+                        ))}
+                        {!isSearchLoading && searchResults && searchResults.users?.map(user => (
+                            <ListItem key={user._id} button component={Link} to={`/profile/${user._id}`} onClick={onSearchResultClick}>
+                              <ListItemAvatar>
+                                <Avatar 
+                                  alt={user.fullName} 
+                                  src={user.avatarUrl ? `http://localhost:4444${user.avatarUrl}` : '/noavatar.png'}
+                                />
+                              </ListItemAvatar>
+                              <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
+                                <Typography variant="subtitle1" noWrap>{user.fullName}</Typography>
+                                <Typography variant="body2" color="text.secondary" noWrap>
+                                  {user.email}
+                                </Typography>
+                              </Box>
+                              <Chip 
+                                icon={<PersonIcon fontSize="small" />} 
+                                label="Пользователь" 
+                                size="small" 
+                                color="secondary" 
+                                variant="outlined"
+                              />
+                            </ListItem>
+                        ))}
+                        {!isSearchLoading && searchResults && searchResults.messages?.map(message => (
+                            <ListItem key={message._id} button component={Link} to={`/messages?chatId=${message.chat}&messageId=${message._id}`} onClick={onSearchResultClick}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                                <MessageIcon color="action" sx={{ mr: 2 }} />
+                                <Box sx={{ flexGrow: 1, minWidth: 0, mr: 2 }}>
+                                  <Typography variant="body1" noWrap sx={{ maxWidth: '100%' }}>
+                                    {message.text}
+                                  </Typography>
+                                </Box>
+                                <Chip 
+                                  icon={<MessageIcon fontSize="small" />} 
+                                  label="Сообщение" 
+                                  size="small" 
+                                  color="info" 
+                                  variant="outlined"
+                                />
+                              </Box>
+                            </ListItem>
                       ))}
                     </List>
                   </Paper>
-              )}
-            </div>
+                )}
+              </div>
+            </ClickAwayListener>
 
             <div className={styles.rightSection}>
               {isAuth ? (
