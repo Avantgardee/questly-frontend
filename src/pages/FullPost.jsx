@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import SimpleMDE from 'react-simplemde-editor';
 import {fetchCreateComment, fetchGetPostComments} from "../redux/slices/comments";
 import {useDispatch, useSelector} from "react-redux";
+import {likePost} from "../redux/slices/posts";
 import styles from "../components/AddComment/AddComment.module.scss";
 import Avatar from "@mui/material/Avatar";
 import TextField from "@mui/material/TextField";
@@ -25,7 +26,6 @@ export const FullPost = () => {
     const dispatch = useDispatch();
     const userData = useSelector((state) => state.auth.data);
     const [data, setData] = React.useState();
-    const [newComm, setNewComm] = React.useState(false);
     const [comments, setCommentsData] = React.useState([]);
      const [isLoading, setLoading] = React.useState(true);
     const [isComLoading, setComLoading] = React.useState(true);
@@ -42,20 +42,25 @@ export const FullPost = () => {
             .then((res) => {
                 setCommentsData(res.data);
                 setComLoading(false);
-                setNewComm(false);
             })
             .catch((err) =>
             {
                 setShowNotFoundDialog(true);
             });
     }
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
+        if (!text.trim()) return;
+        
         try{
             const postId = params.id;
-            dispatch(fetchCreateComment({postId,text}));
-            setComment(' ');
-            setNewComm(true);
-            textFieldRef.current.value = '';
+            const result = await dispatch(fetchCreateComment({postId, text: text.trim()}));
+            
+            if (fetchCreateComment.fulfilled.match(result)) {
+                // Добавляем новый комментарий локально без перезагрузки всего списка
+                setCommentsData(prevComments => [...prevComments, result.payload]);
+                setComment('');
+                textFieldRef.current.value = '';
+            }
         }
         catch(error){
             console.log(error);
@@ -64,8 +69,9 @@ export const FullPost = () => {
 
     const [text, setComment] = React.useState('');
     React.useEffect(() => {
+        setComLoading(true);
         getAllCommentsForPost();
-    }, [newComm]);
+    }, [id]);
 
 
     React.useEffect(() => {
@@ -79,7 +85,20 @@ export const FullPost = () => {
             {
                 setShowNotFoundDialog(true);
         });
-    }, []);
+    }, [id]);
+
+    // Обработчик обновления данных поста после лайка
+    const handleLikeUpdate = React.useCallback((likeResult) => {
+        // Обновляем только данные о лайках, не перезагружая весь пост
+        // чтобы не увеличивать viewsCount
+        if (likeResult && data) {
+            setData(prevData => ({
+                ...prevData,
+                isLiked: likeResult.isLiked,
+                likes: likeResult.post.likes || prevData.likes,
+            }));
+        }
+    }, [data]);
 
     if(isLoading ){
         return (
@@ -106,7 +125,10 @@ export const FullPost = () => {
               viewsCount={data.viewsCount}
               commentsCount={data.comments?.length || 0}
               tags={data.tags}
+              likes={data.likes || []}
+              isLiked={data.isLiked}
               isFullPost
+              onLikeUpdate={handleLikeUpdate}
           >
               <ReactMarkdown children={data.text}/>
           </Post>

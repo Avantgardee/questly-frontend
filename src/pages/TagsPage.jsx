@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useDispatch, useSelector } from "react-redux";
 import { Post } from '../components/Post';
-import { fetchPostsWithTag, filterByComments, filterByViews, filterByCreatedAt, filterByTitle } from "../redux/slices/posts";
+import { fetchPostsWithTag, filterByComments, filterByViews, filterByCreatedAt, filterByTitle, filterByLikes } from "../redux/slices/posts";
 import { formatInTimeZone } from 'date-fns-tz';
 import { useParams } from "react-router-dom";
-import { FormControlLabel, Switch, Button, Typography, Grid } from "@mui/material";
+import { FormControlLabel, Switch, Button, Typography, Grid, Box, CircularProgress } from "@mui/material";
 import SearchBar from "../components/SearchBar";
 
 const convertToTimezone = (dateString, timeZone) => {
@@ -18,42 +18,108 @@ export const TagsPage = () => {
     const timeZone = 'Europe/Moscow';
     const { id } = useParams();
     const isPostsLoading = posts.status === 'loading';
+    const isLoadingMore = posts.loadingMore;
+    const hasMore = posts.pagination?.hasMore || false;
+    const observerTarget = useRef(null);
+    const currentPageRef = useRef(1);
 
     React.useEffect(() => {
-        dispatch(fetchPostsWithTag(id));
+        currentPageRef.current = 1;
+        dispatch(fetchPostsWithTag({ tag: id, page: 1, limit: 10, append: false }));
     }, [dispatch, id]);
+
+    const loadMorePosts = useCallback(() => {
+        if (!isLoadingMore && hasMore && id) {
+            const nextPage = currentPageRef.current + 1;
+            dispatch(fetchPostsWithTag({ tag: id, page: nextPage, limit: 10, append: true }));
+            currentPageRef.current = nextPage;
+        }
+    }, [isLoadingMore, hasMore, id, dispatch]);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            entries => {
+                if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+                    loadMorePosts();
+                }
+            },
+            { threshold: 0.1 }
+        );
+
+        const currentTarget = observerTarget.current;
+        if (currentTarget) {
+            observer.observe(currentTarget);
+        }
+
+        return () => {
+            if (currentTarget) {
+                observer.unobserve(currentTarget);
+            }
+            // Cleanup для таймера поиска
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
+        };
+    }, [loadMorePosts, hasMore, isLoadingMore]);
 
     const [checked, setChecked] = useState(true);
     const [activeTab, setActiveTab] = useState('createdAt');
     const [searchQuery, setSearchQuery] = useState('');
+    const searchTimeoutRef = useRef(null);
 
     const handleSearchChange = (event) => {
         const searchNow = event.target.value;
         setSearchQuery(searchNow);
-        dispatch(filterByTitle(searchNow));
+        currentPageRef.current = 1;
+        
+        // Очищаем предыдущий таймер
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+        
+        // Устанавливаем новый таймер для debounce (500ms)
+        searchTimeoutRef.current = setTimeout(async () => {
+            // Перезагружаем посты с новым поисковым запросом
+            await dispatch(fetchPostsWithTag({ tag: id, page: 1, limit: 10, append: false }));
+            // Применяем фильтр по заголовку на клиенте
+            dispatch(filterByTitle(searchNow));
+        }, 500);
     };
 
-    const handleChange = (event) => {
+    const handleChange = async (event) => {
         const newChecked = event.target.checked;
         setChecked(newChecked);
+        currentPageRef.current = 1;
+        // Перезагружаем посты
+        await dispatch(fetchPostsWithTag({ tag: id, page: 1, limit: 10, append: false }));
+        // Применяем сортировку
         handleTabChange(activeTab, newChecked);
     };
 
-    const handleTabChange = (filterValue, direction) => {
+    const handleTabChange = async (filterValue, direction) => {
         setActiveTab(filterValue);
-        const sortDirection = direction ? 'desc' : 'asc';
-        switch (filterValue) {
-            case 'comments':
-                dispatch(filterByComments(sortDirection));
-                break;
-            case 'viewsCount':
-                dispatch(filterByViews(sortDirection));
-                break;
-            case 'createdAt':
-                dispatch(filterByCreatedAt(sortDirection));
-                break;
-            default:
-                break;
+        currentPageRef.current = 1;
+        const likesFilter = filterValue === 'likes' ? (direction ? 'most' : 'least') : undefined;
+        // Перезагружаем посты с серверной фильтрацией для лайков
+        if (filterValue === 'likes') {
+            await dispatch(fetchPostsWithTag({ tag: id, page: 1, limit: 10, append: false, likesFilter }));
+        } else {
+            await dispatch(fetchPostsWithTag({ tag: id, page: 1, limit: 10, append: false }));
+            // Применяем сортировку на клиенте
+            const sortDirection = direction ? 'desc' : 'asc';
+            switch (filterValue) {
+                case 'comments':
+                    dispatch(filterByComments(sortDirection));
+                    break;
+                case 'viewsCount':
+                    dispatch(filterByViews(sortDirection));
+                    break;
+                case 'createdAt':
+                    dispatch(filterByCreatedAt(sortDirection));
+                    break;
+                default:
+                    break;
+            }
         }
     };
 
@@ -82,6 +148,12 @@ export const TagsPage = () => {
                 onClick={() => handleTabChange('comments', checked)}
             >
                 По комментариям
+            </Button>
+            <Button
+                variant={activeTab === 'likes' ? 'contained' : 'outlined'}
+                onClick={() => handleTabChange('likes', checked)}
+            >
+                По лайкам
             </Button>
             <FormControlLabel
                 control={<Switch checked={checked} onChange={handleChange} />}
@@ -116,11 +188,19 @@ export const TagsPage = () => {
                                     viewsCount={obj.viewsCount}
                                     commentsCount={obj.comments?.length || 0}
                                     tags={obj.tags}
+                                    likes={obj.likes || []}
+                                    isLiked={obj.isLiked}
                                     isEditable={userData?._id === obj.user._id}
                                 />
                             )
                         )
                     )}
+                    {isLoadingMore && (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
+                            <CircularProgress />
+                        </Box>
+                    )}
+                    <div ref={observerTarget} style={{ height: '20px' }} />
                 </Grid>
             </Grid>
         </>

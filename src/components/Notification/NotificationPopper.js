@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Button, Popper, Paper, List, ListItem, ListItemText, Link, Typography, Avatar, ListItemAvatar, Box } from "@mui/material";
+import React, { useState, useRef } from 'react';
+import { Button, Popper, Paper, List, ListItem, ListItemText, Link, Typography, Avatar, ListItemAvatar, Box, ClickAwayListener } from "@mui/material";
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -56,6 +56,18 @@ const NotificationItem = ({ notification }) => {
                 </>
             );
             break;
+        case 'like':
+            notificationText = (
+                <>
+                    Пользователю <Link href={`/profile/${actionByUser._id}`}>{actionByUser.fullName || 'Неизвестный пользователь'}</Link> понравилась ваша статья{' '}
+                    {post && post._id ? (
+                        <Link href={`/posts/${post._id}`}>{post.title || 'Без названия'}</Link>
+                    ) : (
+                        'статью'
+                    )}.
+                </>
+            );
+            break;
         default:
             notificationText = 'Новое уведомление';
     }
@@ -94,10 +106,20 @@ const NotificationItem = ({ notification }) => {
 const NotificationPopper = ({ notifications }) => {
     const [open, setOpen] = useState(false);
     const [anchorEl, setAnchorEl] = useState(null);
+    const buttonRef = useRef(null);
 
     const handleClick = (event) => {
+        event.stopPropagation();
         setAnchorEl(event.currentTarget);
         setOpen((prevOpen) => !prevOpen);
+    };
+
+    const handleClose = (event) => {
+        // Не закрываем, если клик был на кнопке
+        if (buttonRef.current && buttonRef.current.contains(event.target)) {
+            return;
+        }
+        setOpen(false);
     };
 
     // Фильтруем уведомления, удаляя те, у которых нет actionByUser
@@ -105,32 +127,42 @@ const NotificationPopper = ({ notifications }) => {
 
     return (
         <>
-            <Button onClick={handleClick} variant="contained" color="info" startIcon={<NotificationsIcon />}>
+            <Button 
+                ref={buttonRef}
+                onClick={handleClick} 
+                variant="contained" 
+                color="info" 
+                startIcon={<NotificationsIcon />}
+            >
                  {validNotifications.length > 0 ? `(${validNotifications.length})` : ''}
             </Button>
-            <Popper open={open} anchorEl={anchorEl} placement="bottom-start">
-                <Paper
-                    sx={{
-                        width: '400px',
-                        maxHeight: '400px',
-                        overflowY: 'auto',
-                        overflowX: 'hidden',
-                        p: 2
-                    }}
-                >
-                    <List>
-                        {validNotifications.length > 0 ? (
-                            validNotifications.map((notif) => (
-                                <NotificationItem key={notif._id || notif.id || Math.random()} notification={notif} />
-                            ))
-                        ) : (
-                            <ListItem>
-                                <ListItemText primary="Нет новых уведомлений" />
-                            </ListItem>
-                        )}
-                    </List>
-                </Paper>
-            </Popper>
+            {open && (
+                <ClickAwayListener onClickAway={handleClose}>
+                    <Popper open={open} anchorEl={anchorEl} placement="bottom-start">
+                        <Paper
+                            sx={{
+                                width: '400px',
+                                maxHeight: '400px',
+                                overflowY: 'auto',
+                                overflowX: 'hidden',
+                                p: 2
+                            }}
+                        >
+                            <List>
+                                {validNotifications.length > 0 ? (
+                                    validNotifications.map((notif) => (
+                                        <NotificationItem key={notif._id || notif.id || Math.random()} notification={notif} />
+                                    ))
+                                ) : (
+                                    <ListItem>
+                                        <ListItemText primary="Нет новых уведомлений" />
+                                    </ListItem>
+                                )}
+                            </List>
+                        </Paper>
+                    </Popper>
+                </ClickAwayListener>
+            )}
         </>
     );
 };

@@ -12,8 +12,22 @@ class WebSocketService {
     connect(token) {
         this.token = token;
 
+        // Если уже подключен и токен тот же, не переподключаемся
+        if (this.socket && this.socket.readyState === WebSocket.OPEN && this.token === token) {
+            console.log('WebSocket already connected');
+            return;
+        }
+
+        // Если есть старое соединение, закрываем его
         if (this.socket) {
-            this.disconnect();
+            // Удаляем старые обработчики перед закрытием
+            this.socket.onclose = null;
+            this.socket.onerror = null;
+            this.socket.onmessage = null;
+            if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
+                this.socket.close();
+            }
+            this.socket = null;
         }
 
         if (!token) {
@@ -44,14 +58,34 @@ class WebSocketService {
             };
 
             this.socket.onclose = (event) => {
-                console.log('WebSocket disconnected:', event.code, event.reason);
+                // Код 1005 - нормальное закрытие без кода статуса (например, при навигации браузера)
+                // Код 1000 - нормальное закрытие
+                // Не логируем их как ошибки
+                if (event.code !== 1005 && event.code !== 1000) {
+                    console.log('WebSocket disconnected:', event.code, event.reason);
+                }
 
-                if (this.reconnectAttempts < this.maxReconnectAttempts) {
-                    const delay = Math.min(30000, 1000 * Math.pow(2, this.reconnectAttempts));
+                // Очищаем ссылку на сокет
+                this.socket = null;
+
+                // Переподключаемся если есть токен (даже при нормальном закрытии)
+                // Это нужно для случаев, когда пользователь возвращается на страницу через историю браузера
+                if (this.token && this.reconnectAttempts < this.maxReconnectAttempts) {
+                    // При нормальном закрытии (1000, 1005) переподключаемся сразу
+                    // При ошибке - с задержкой
+                    const delay = (event.code === 1000 || event.code === 1005) 
+                        ? 100 
+                        : Math.min(30000, 1000 * Math.pow(2, this.reconnectAttempts));
+                    
                     setTimeout(() => {
                         this.reconnectAttempts++;
-                        this.connect(this.token);
+                        if (this.token) {
+                            this.connect(this.token);
+                        }
                     }, delay);
+                } else if (!this.token) {
+                    // Если нет токена, сбрасываем счетчик
+                    this.reconnectAttempts = 0;
                 }
             };
 
@@ -131,6 +165,27 @@ class WebSocketService {
         return this.sendMessage({
             type: 'MESSAGE_DELIVERED',
             data: { messageId }
+        });
+    }
+
+    editMessage(messageId, text) {
+        return this.sendMessage({
+            type: 'EDIT_MESSAGE',
+            data: { messageId, text }
+        });
+    }
+
+    deleteMessage(messageId) {
+        return this.sendMessage({
+            type: 'DELETE_MESSAGE',
+            data: { messageId }
+        });
+    }
+
+    deleteChat(chatId) {
+        return this.sendMessage({
+            type: 'DELETE_CHAT',
+            data: { chatId }
         });
     }
 }
