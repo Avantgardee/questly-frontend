@@ -11,36 +11,52 @@ export const fetchPosts = createAsyncThunk('posts/fetchPosts',async ({ page = 1,
     }
 })
 
-export const fetchPostsWithUser = createAsyncThunk('posts/fetchPostsWithUser',async ({ user, page = 1, limit = 10, append = false }, { rejectWithValue }) => {
+export const fetchPostsWithUser = createAsyncThunk('posts/fetchPostsWithUser',async ({ user, page = 1, limit = 10, append = false, likesFilter }, { rejectWithValue }) => {
     try {
-        const { data } = await axios.get(`/posts/user/${user}`, { params: { page, limit } });
+        const params = { page, limit };
+        if (likesFilter) {
+            params.likesFilter = likesFilter;
+        }
+        const { data } = await axios.get(`/posts/user/${user}`, { params });
         return { ...data, append };
     } catch (error) {
         return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки постов');
     }
 })
 
-export const fetchPostsWithTag = createAsyncThunk('posts/fetchPostsWithTag',async ({ tag, page = 1, limit = 10, append = false }, { rejectWithValue }) => {
+export const fetchPostsWithTag = createAsyncThunk('posts/fetchPostsWithTag',async ({ tag, page = 1, limit = 10, append = false, likesFilter }, { rejectWithValue }) => {
     try {
-        const { data } = await axios.get(`/tags/${tag}`, { params: { page, limit } });
+        const params = { page, limit };
+        if (likesFilter) {
+            params.likesFilter = likesFilter;
+        }
+        const { data } = await axios.get(`/tags/${tag}`, { params });
         return { ...data, append };
     } catch (error) {
         return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки постов');
     }
 })
 
-export const fetchPostsWithFilter = createAsyncThunk('posts/fetchPostsWithFilter',async ({ filter, direction, search, page = 1, limit = 10, append = false }, { rejectWithValue }) => {
+export const fetchPostsWithFilter = createAsyncThunk('posts/fetchPostsWithFilter',async ({ filter, direction, search, page = 1, limit = 10, append = false, likesFilter }, { rejectWithValue }) => {
     try {
-        const { data } = await axios.get(`/posts/sort/${filter}/${direction}/${search || ''}`, { params: { page, limit } });
+        const params = { page, limit };
+        if (likesFilter) {
+            params.likesFilter = likesFilter;
+        }
+        const { data } = await axios.get(`/posts/sort/${filter}/${direction}/${search || ''}`, { params });
         return { ...data, append };
     } catch (error) {
         return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки постов');
     }
 })
 
-export const fetchPostsWithFilterAndSubs = createAsyncThunk('posts/fetchPostsWithFilterAndSubs',async ({ filter, direction, search, page = 1, limit = 10, append = false }, { rejectWithValue }) => {
+export const fetchPostsWithFilterAndSubs = createAsyncThunk('posts/fetchPostsWithFilterAndSubs',async ({ filter, direction, search, page = 1, limit = 10, append = false, likesFilter }, { rejectWithValue }) => {
     try {
-        const { data } = await axios.get(`/posts/sortWithSubscriptions/${filter}/${direction}/${search || ''}`, { params: { page, limit } });
+        const params = { page, limit };
+        if (likesFilter) {
+            params.likesFilter = likesFilter;
+        }
+        const { data } = await axios.get(`/posts/sortWithSubscriptions/${filter}/${direction}/${search || ''}`, { params });
         return { ...data, append };
     } catch (error) {
         return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки постов');
@@ -52,9 +68,36 @@ export const fetchTags = createAsyncThunk('posts/fetchTags',async () => {
     return data;
 })
 
+export const fetchMostLikedPosts = createAsyncThunk('posts/fetchMostLikedPosts', async ({ limit = 5 }, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.get('/posts/most-liked', { params: { limit } });
+        return data;
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки самых залайканных статей');
+    }
+});
+
 export const fetchRemovePost = createAsyncThunk('posts/fetchRemovePost',async (id) => {
     axios.delete(`/posts/${id}`);
 })
+
+export const likePost = createAsyncThunk('posts/likePost', async (postId, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.post(`/posts/${postId}/like`);
+        return data;
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка при лайке поста');
+    }
+});
+
+export const fetchPostLikes = createAsyncThunk('posts/fetchPostLikes', async ({ postId, page = 1, limit = 10, append = false }, { rejectWithValue }) => {
+    try {
+        const { data } = await axios.get(`/posts/${postId}/likes`, { params: { page, limit } });
+        return { ...data, append, postId };
+    } catch (error) {
+        return rejectWithValue(error.response?.data?.message || 'Ошибка загрузки лайков');
+    }
+});
 const initialState = {
     posts: {
         items: [],
@@ -73,6 +116,15 @@ const initialState = {
         items: [],
         status: 'loading',
     },
+    mostLikedPosts: {
+        items: [],
+        status: 'loading',
+    },
+    postLikes: {
+        items: {},
+        pagination: {},
+        loadingMore: false
+    }
 };
 
 const postsSlice = createSlice({
@@ -205,6 +257,9 @@ const postsSlice = createSlice({
         },
         //УДАЛЕНИЕ
         [fetchRemovePost.pending]: (state, action) => {
+            // Можно добавить индикатор загрузки
+        },
+        [fetchRemovePost.fulfilled]: (state, action) => {
             state.posts.items = state.posts.items.filter((item) => item._id !== action.meta.arg);
         },
         //Получение статей с тегом
@@ -253,7 +308,56 @@ const postsSlice = createSlice({
             state.posts.loadingMore = false;
             state.posts.items = [];
         },
+        [fetchRemovePost.fulfilled]: (state, action) => {
+            state.posts.items = state.posts.items.filter((obj) => obj._id !== action.meta.arg);
+        },
+        // Лайки
+        [likePost.pending]: (state) => {
+            // Можно добавить индикатор загрузки
+        },
+        [likePost.fulfilled]: (state, action) => {
+            const { post, isLiked, likesCount } = action.payload;
+            const postIndex = state.posts.items.findIndex(p => p._id === post._id);
+            if (postIndex !== -1) {
+                state.posts.items[postIndex].likes = post.likes;
+                state.posts.items[postIndex].likesCount = likesCount;
+                state.posts.items[postIndex].isLiked = isLiked;
+            }
+        },
+        [likePost.rejected]: (state) => {
+            // Обработка ошибки
+        },
+        [fetchPostLikes.pending]: (state, action) => {
+            if (action.meta.arg.append) {
+                state.postLikes.loadingMore = true;
+            }
+        },
+        [fetchPostLikes.fulfilled]: (state, action) => {
+            const { postId, users, pagination, append } = action.payload;
+            state.postLikes.loadingMore = false;
+            if (append) {
+                state.postLikes.items[postId] = [...(state.postLikes.items[postId] || []), ...users];
+            } else {
+                state.postLikes.items[postId] = users;
+            }
+            state.postLikes.pagination[postId] = pagination;
+        },
+        [fetchPostLikes.rejected]: (state) => {
+            state.postLikes.loadingMore = false;
+        },
+        // Самые залайканные статьи
+        [fetchMostLikedPosts.pending]: (state) => {
+            state.mostLikedPosts.status = 'loading';
+        },
+        [fetchMostLikedPosts.fulfilled]: (state, action) => {
+            state.mostLikedPosts.status = 'loaded';
+            state.mostLikedPosts.items = action.payload;
+        },
+        [fetchMostLikedPosts.rejected]: (state) => {
+            state.mostLikedPosts.status = 'error';
+            state.mostLikedPosts.items = [];
+        },
     }
 });
-export const { filterByComments, filterByViews, filterByCreatedAt, filterByTitle } = postsSlice.actions;
+export const { filterByComments, filterByViews, filterByCreatedAt, filterByTitle, filterByLikes } = postsSlice.actions;
 export const postsReducer = postsSlice.reducer;

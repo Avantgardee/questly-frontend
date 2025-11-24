@@ -24,6 +24,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import CommentIcon from '@mui/icons-material/Comment';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import GroupIcon from '@mui/icons-material/Group';
+import FavoriteIcon from '@mui/icons-material/Favorite';
 import SearchBar from "../components/SearchBar";
 import { fetchAuthMe } from "../redux/slices/auth";
 
@@ -75,6 +76,7 @@ export const Home = () => {
 
     const fetchPostsData = async (filterValue, direction, search, subs, page = 1, append = false) => {
         currentPageRef.current = page;
+        const likesFilter = filterValue === 'likes' ? (direction ? 'most' : 'least') : undefined;
         if (subs) {
             await dispatch(fetchPostsWithFilterAndSubs({
                 filter: filterValue,
@@ -82,7 +84,8 @@ export const Home = () => {
                 search: search,
                 page,
                 limit: 10,
-                append
+                append,
+                likesFilter
             }));
         } else {
             await dispatch(fetchPostsWithFilter({
@@ -91,7 +94,8 @@ export const Home = () => {
                 search: search,
                 page,
                 limit: 10,
-                append
+                append,
+                likesFilter
             }));
         }
     };
@@ -137,6 +141,7 @@ export const Home = () => {
         
         // Устанавливаем новый таймер для debounce (500ms)
         searchTimeoutRef.current = setTimeout(async () => {
+            const likesFilter = activeTab === 'likes' ? (checked ? 'most' : 'least') : undefined;
             // Используем актуальные значения напрямую
             if (filterBySubs) {
                 await dispatch(fetchPostsWithFilterAndSubs({
@@ -145,7 +150,8 @@ export const Home = () => {
                     search: searchNow,
                     page: 1,
                     limit: 10,
-                    append: false
+                    append: false,
+                    likesFilter
                 }));
             } else {
                 await dispatch(fetchPostsWithFilter({
@@ -154,7 +160,8 @@ export const Home = () => {
                     search: searchNow,
                     page: 1,
                     limit: 10,
-                    append: false
+                    append: false,
+                    likesFilter
                 }));
             }
         }, 500);
@@ -164,6 +171,7 @@ export const Home = () => {
         const newChecked = event.target.checked;
         setChecked(newChecked);
         currentPageRef.current = 1;
+        const likesFilter = activeTab === 'likes' ? (newChecked ? 'most' : 'least') : undefined;
         // Используем актуальные значения напрямую
         if (filterBySubs) {
             await dispatch(fetchPostsWithFilterAndSubs({
@@ -172,7 +180,8 @@ export const Home = () => {
                 search: searchQuery,
                 page: 1,
                 limit: 10,
-                append: false
+                append: false,
+                likesFilter
             }));
         } else {
             await dispatch(fetchPostsWithFilter({
@@ -181,7 +190,8 @@ export const Home = () => {
                 search: searchQuery,
                 page: 1,
                 limit: 10,
-                append: false
+                append: false,
+                likesFilter
             }));
         }
     };
@@ -189,6 +199,7 @@ export const Home = () => {
     const handleTabChange = async (filterValue, direction, search, subs) => {
         setActiveTab(filterValue);
         currentPageRef.current = 1;
+        const likesFilter = filterValue === 'likes' ? (direction ? 'most' : 'least') : undefined;
         // Используем актуальные значения напрямую
         if (subs) {
             await dispatch(fetchPostsWithFilterAndSubs({
@@ -197,7 +208,8 @@ export const Home = () => {
                 search: search || '',
                 page: 1,
                 limit: 10,
-                append: false
+                append: false,
+                likesFilter
             }));
         } else {
             await dispatch(fetchPostsWithFilter({
@@ -206,7 +218,8 @@ export const Home = () => {
                 search: search || '',
                 page: 1,
                 limit: 10,
-                append: false
+                append: false,
+                likesFilter
             }));
         }
     };
@@ -215,6 +228,7 @@ export const Home = () => {
         const newValue = event.target.checked;
         setFilterBySubs(newValue);
         currentPageRef.current = 1;
+        const likesFilter = activeTab === 'likes' ? (checked ? 'most' : 'least') : undefined;
         // Используем актуальные значения напрямую
         if (newValue) {
             await dispatch(fetchPostsWithFilterAndSubs({
@@ -223,7 +237,8 @@ export const Home = () => {
                 search: searchQuery,
                 page: 1,
                 limit: 10,
-                append: false
+                append: false,
+                likesFilter
             }));
         } else {
             await dispatch(fetchPostsWithFilter({
@@ -232,7 +247,8 @@ export const Home = () => {
                 search: searchQuery,
                 page: 1,
                 limit: 10,
-                append: false
+                append: false,
+                likesFilter
             }));
         }
     };
@@ -271,7 +287,11 @@ export const Home = () => {
                     <ToggleButtonGroup
                         value={activeTab}
                         exclusive
-                        onChange={(e, newTab) => newTab && handleTabChange(newTab, checked, searchQuery, filterBySubs)}
+                        onChange={(e, newTab) => {
+                            if (newTab) {
+                                handleTabChange(newTab, checked, searchQuery, filterBySubs);
+                            }
+                        }}
                         aria-label="Сортировка"
                         size="small"
                         color="primary"
@@ -288,6 +308,10 @@ export const Home = () => {
                         <ToggleButton value="comments" aria-label="По комментариям">
                             <CommentIcon sx={{ mr: 1 }} />
                             <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Комментарии</Box>
+                        </ToggleButton>
+                        <ToggleButton value="likes" aria-label="По лайкам">
+                            <FavoriteIcon sx={{ mr: 1 }} />
+                            <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>Лайки</Box>
                         </ToggleButton>
                     </ToggleButtonGroup>
 
@@ -367,7 +391,7 @@ export const Home = () => {
                                     }}
                                 >
                                     <Post
-                                        _id={obj._id}
+                                        id={obj._id}
                                         title={obj.title}
                                         imageUrl={obj.imageUrl ? `http://localhost:4444${obj.imageUrl}` : ''}
                                         user={obj.user}
@@ -375,6 +399,8 @@ export const Home = () => {
                                         viewsCount={obj.viewsCount}
                                         commentsCount={obj.comments ? obj.comments.length : 0}
                                         tags={obj.tags}
+                                        likes={obj.likes || []}
+                                        isLiked={obj.isLiked}
                                         isEditable={userData?._id === obj.user._id}
                                     />
                                 </Box>
@@ -424,7 +450,11 @@ export const Home = () => {
                                     <ToggleButtonGroup
                                         value={activeTab}
                                         exclusive
-                                        onChange={(e, newTab) => newTab && handleTabChange(newTab, checked, searchQuery, filterBySubs)}
+                                        onChange={(e, newTab) => {
+                            if (newTab) {
+                                handleTabChange(newTab, checked, searchQuery, filterBySubs);
+                            }
+                        }}
                                         fullWidth
                                         orientation="vertical"
                                         size="small"
@@ -440,6 +470,10 @@ export const Home = () => {
                                         <ToggleButton value="comments">
                                             <CommentIcon sx={{ mr: 1 }} />
                                             Количеству комментариев
+                                        </ToggleButton>
+                                        <ToggleButton value="likes">
+                                            <FavoriteIcon sx={{ mr: 1 }} />
+                                            Лайкам
                                         </ToggleButton>
                                     </ToggleButtonGroup>
                                 </Box>

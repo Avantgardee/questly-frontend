@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown";
 import SimpleMDE from 'react-simplemde-editor';
 import {fetchCreateComment, fetchGetPostComments} from "../redux/slices/comments";
 import {useDispatch, useSelector} from "react-redux";
+import {likePost} from "../redux/slices/posts";
 import styles from "../components/AddComment/AddComment.module.scss";
 import Avatar from "@mui/material/Avatar";
 import TextField from "@mui/material/TextField";
@@ -79,7 +80,20 @@ export const FullPost = () => {
             {
                 setShowNotFoundDialog(true);
         });
-    }, []);
+    }, [id]);
+
+    // Обработчик обновления данных поста после лайка
+    const handleLikeUpdate = React.useCallback((likeResult) => {
+        // Обновляем только данные о лайках, не перезагружая весь пост
+        // чтобы не увеличивать viewsCount
+        if (likeResult && data) {
+            setData(prevData => ({
+                ...prevData,
+                isLiked: likeResult.isLiked,
+                likes: likeResult.post.likes || prevData.likes,
+            }));
+        }
+    }, [data]);
 
     if(isLoading ){
         return (
@@ -106,7 +120,10 @@ export const FullPost = () => {
               viewsCount={data.viewsCount}
               commentsCount={data.comments?.length || 0}
               tags={data.tags}
+              likes={data.likes || []}
+              isLiked={data.isLiked}
               isFullPost
+              onLikeUpdate={handleLikeUpdate}
           >
               <ReactMarkdown children={data.text}/>
           </Post>

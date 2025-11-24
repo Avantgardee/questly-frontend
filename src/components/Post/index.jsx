@@ -6,17 +6,21 @@ import DeleteIcon from '@mui/icons-material/Clear';
 import EditIcon from '@mui/icons-material/Edit';
 import EyeIcon from '@mui/icons-material/RemoveRedEyeOutlined';
 import CommentIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
+import FavoriteIcon from '@mui/icons-material/Favorite';
+import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import Dialog from '@mui/material/Dialog';
 import DialogTitle from '@mui/material/DialogTitle';
 import DialogContent from '@mui/material/DialogContent';
 import DialogActions from '@mui/material/DialogActions';
 import Button from '@mui/material/Button';
+import { useSelector } from 'react-redux';
 
 import styles from './Post.module.scss';
 import { UserInfo } from '../UserInfo';
 import { PostSkeleton } from './Skeleton';
 import { useDispatch } from "react-redux";
-import { fetchRemovePost } from "../../redux/slices/posts";
+import { fetchRemovePost, likePost, fetchPostLikes } from "../../redux/slices/posts";
+import LikesModal from './LikesModal';
 
 export const Post = ({
                        id,
@@ -31,9 +35,16 @@ export const Post = ({
                        isFullPost,
                        isLoading,
                        isEditable,
+                       likes = [],
+                       isLiked = false,
+                       onLikeUpdate,
                      }) => {
   const dispatch = useDispatch();
+  const authUser = useSelector((state) => state.auth.data);
   const [openDialog, setOpenDialog] = useState(false);
+  const [openLikesModal, setOpenLikesModal] = useState(false);
+  const likesCount = likes?.length || 0;
+  const isPostLiked = isLiked || (authUser && likes?.some(like => (typeof like === 'object' ? like._id : like) === authUser._id));
 
   const handleOpenDialog = () => {
     setOpenDialog(true);
@@ -46,6 +57,35 @@ export const Post = ({
   const handleConfirmRemove = () => {
     dispatch(fetchRemovePost(id));
     setOpenDialog(false);
+  };
+
+  const handleLikeClick = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (authUser) {
+      try {
+        const result = await dispatch(likePost(id)).unwrap();
+        // Если передан callback для обновления данных (например, на странице FullPost)
+        if (onLikeUpdate) {
+          onLikeUpdate(result);
+        }
+      } catch (error) {
+        console.error('Ошибка при лайке поста:', error);
+      }
+    }
+  };
+
+  const handleLikesRightClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (likesCount > 0) {
+      setOpenLikesModal(true);
+      dispatch(fetchPostLikes({ postId: id, page: 1, limit: 10, append: false }));
+    }
+  };
+
+  const handleCloseLikesModal = () => {
+    setOpenLikesModal(false);
   };
 
   if (isLoading) {
@@ -96,6 +136,18 @@ export const Post = ({
                 <CommentIcon />
                 <span>{commentsCount}</span>
               </li>
+              <li
+                onClick={handleLikeClick}
+                onContextMenu={handleLikesRightClick}
+                style={{ cursor: 'pointer' }}
+              >
+                {isPostLiked ? (
+                  <FavoriteIcon sx={{ color: 'red' }} />
+                ) : (
+                  <FavoriteBorderIcon />
+                )}
+                <span>{likesCount}</span>
+              </li>
             </ul>
           </div>
         </div>
@@ -107,6 +159,11 @@ export const Post = ({
             <Button onClick={handleConfirmRemove} color="secondary">Удалить</Button>
           </DialogActions>
         </Dialog>
+        <LikesModal
+          open={openLikesModal}
+          onClose={handleCloseLikesModal}
+          postId={id}
+        />
       </div>
   );
 };

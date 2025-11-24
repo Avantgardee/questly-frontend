@@ -56,6 +56,18 @@ const NotificationItem = ({ notification }) => {
                 </>
             );
             break;
+        case 'like':
+            notificationText = (
+                <>
+                    Пользователю <Link href={`/profile/${actionByUser._id}`}>{actionByUser.fullName || 'Неизвестный пользователь'}</Link> понравилась ваша статья{' '}
+                    {post && post._id ? (
+                        <Link href={`/posts/${post._id}`}>{post.title || 'Без названия'}</Link>
+                    ) : (
+                        'статью'
+                    )}.
+                </>
+            );
+            break;
         default:
             notificationText = 'Новое уведомление';
     }

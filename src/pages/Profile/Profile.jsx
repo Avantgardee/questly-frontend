@@ -9,7 +9,8 @@ import {
     fetchPostsWithUser,
     filterByComments, filterByCreatedAt,
     filterByTitle,
-    filterByViews
+    filterByViews,
+    filterByLikes
 } from "../../redux/slices/posts";
 import { fetchGetUser } from "../../redux/slices/user";
 import { Post } from "../../components";
@@ -123,22 +124,27 @@ export const UserProfile = () => {
     const handleTabChange = async (filterValue, direction) => {
         setActiveTab(filterValue);
         currentPageRef.current = 1;
-        // Перезагружаем посты
-        await dispatch(fetchPostsWithUser({ user: id, page: 1, limit: 10, append: false }));
-        // Применяем сортировку на клиенте
-        const sortDirection = direction ? 'desc' : 'asc';
-        switch (filterValue) {
-            case 'comments':
-                dispatch(filterByComments(sortDirection));
-                break;
-            case 'viewsCount':
-                dispatch(filterByViews(sortDirection));
-                break;
-            case 'createdAt':
-                dispatch(filterByCreatedAt(sortDirection));
-                break;
-            default:
-                break;
+        const likesFilter = filterValue === 'likes' ? (direction ? 'most' : 'least') : undefined;
+        // Перезагружаем посты с серверной фильтрацией для лайков
+        if (filterValue === 'likes') {
+            await dispatch(fetchPostsWithUser({ user: id, page: 1, limit: 10, append: false, likesFilter }));
+        } else {
+            await dispatch(fetchPostsWithUser({ user: id, page: 1, limit: 10, append: false }));
+            // Применяем сортировку на клиенте
+            const sortDirection = direction ? 'desc' : 'asc';
+            switch (filterValue) {
+                case 'comments':
+                    dispatch(filterByComments(sortDirection));
+                    break;
+                case 'viewsCount':
+                    dispatch(filterByViews(sortDirection));
+                    break;
+                case 'createdAt':
+                    dispatch(filterByCreatedAt(sortDirection));
+                    break;
+                default:
+                    break;
+            }
         }
     };
 
@@ -283,6 +289,12 @@ export const UserProfile = () => {
             >
                 По комментариям
             </Button>
+            <Button
+                variant={activeTab === 'likes' ? 'contained' : 'outlined'}
+                onClick={() => handleTabChange('likes', checked)}
+            >
+                По лайкам
+            </Button>
             <FormControlLabel
                 control={<Switch checked={checked} onChange={handleChange} />}
                 label={checked ? "От большего к меньшему" : "От меньшего к большему"}
@@ -316,6 +328,8 @@ export const UserProfile = () => {
                                     viewsCount={obj.viewsCount}
                                     commentsCount={obj.comments?.length || 0}
                                     tags={obj.tags}
+                                    likes={obj.likes || []}
+                                    isLiked={obj.isLiked}
                                     isEditable={selectUserData?._id === obj.user._id}
                                 />
                             )
